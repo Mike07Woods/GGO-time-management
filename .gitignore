@@ -26,3 +26,6 @@ yarn-error.log*
 .vscode/
 .idea/
 Thumbs.db
+
+# Claude Code local settings (machine-specific, not for sharing)
+.claude/
