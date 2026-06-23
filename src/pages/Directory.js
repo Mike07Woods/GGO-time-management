@@ -1,13 +1,12 @@
 // src/pages/Directory.js
 // Employee directory built from the profiles table.
-// Everyone can browse + search. Admins/owners can change a person's role and
-// toggle their active status inline.
+// Everyone can browse + search (read-only). User management — changing roles and
+// activating/deactivating people — is admin/owner only, and an admin may NOT
+// modify other admins or owners (only an owner can).
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRole } from '../hooks/useRole';
 import { supabase } from '../supabaseClient';
-
-const ROLES = ['user', 'manager', 'admin', 'owner'];
 
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
@@ -15,7 +14,11 @@ function initials(p) {
 }
 
 export default function Directory() {
-  const { isAdmin } = useRole(); // admins + owners can manage roles/status
+  // Capability helpers drive every management control on this page.
+  const { canManageUsers, canManageUser, assignableRoles } = useRole();
+
+  const manageUsers = canManageUsers(); // admin + owner
+  const roleOptions = assignableRoles(); // roles THIS actor may assign
 
   const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,26 +40,40 @@ export default function Directory() {
     loadPeople();
   }, []);
 
-  // Update a person's role (admins/owners only).
-  async function changeRole(id, role) {
+  // Update a person's role. Guarded so a forbidden actor can't change a row even
+  // if the UI were bypassed.
+  async function changeRole(person, role) {
     setError('');
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', id);
+    if (!canManageUser(person.role)) {
+      setError('You are not allowed to change this user’s role.');
+      return;
+    }
+    const { error } = await supabase.from('profiles').update({ role }).eq('id', person.id);
     if (error) {
       setError(error.message);
       return;
     }
-    setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, role } : p)));
+    setPeople((prev) => prev.map((p) => (p.id === person.id ? { ...p, role } : p)));
   }
 
-  // Activate / deactivate a person (admins/owners only).
-  async function toggleActive(id, isActive) {
+  // Activate / deactivate a person (same management rule as role changes).
+  async function toggleActive(person) {
     setError('');
-    const { error } = await supabase.from('profiles').update({ is_active: !isActive }).eq('id', id);
+    if (!canManageUser(person.role)) {
+      setError('You are not allowed to change this user’s status.');
+      return;
+    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_active: !person.is_active })
+      .eq('id', person.id);
     if (error) {
       setError(error.message);
       return;
     }
-    setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, is_active: !isActive } : p)));
+    setPeople((prev) =>
+      prev.map((p) => (p.id === person.id ? { ...p, is_active: !person.is_active } : p))
+    );
   }
 
   // Client-side search filter.
@@ -106,72 +123,91 @@ export default function Directory() {
                   <th>Position</th>
                   <th>Contact</th>
                   <th>Status</th>
-                  {isAdmin && <th>Actions</th>}
+                  {/* Actions column only exists for user managers */}
+                  {manageUsers && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <div className="row">
-                        <div className="avatar">
-                          {p.avatar_url ? <img src={p.avatar_url} alt="" /> : initials(p)}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>
-                            {[p.first_name, p.last_name].filter(Boolean).join(' ') || '—'}
-                          </div>
-                          <div className="dim" style={{ fontSize: 12 }}>
-                            {p.email}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
+                {filtered.map((p) => {
+                  // Can the current actor manage THIS specific person?
+                  // (admins can't touch other admins/owners)
+                  const editable = manageUsers && canManageUser(p.role);
 
-                    <td>
-                      {/* Admins get a dropdown; others see a static badge */}
-                      {isAdmin ? (
-                        <select
-                          className="select"
-                          style={{ maxWidth: 130 }}
-                          value={p.role || 'user'}
-                          onChange={(e) => changeRole(p.id, e.target.value)}
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="badge badge--purple">{p.role || 'user'}</span>
-                      )}
-                    </td>
+                  // Always include the person's current role as an option so the
+                  // <select> can display it even if it's outside what the actor
+                  // may assign to others.
+                  const options = Array.from(new Set([p.role || 'user', ...roleOptions]));
 
-                    <td>{p.department || '—'}</td>
-                    <td>{p.position || '—'}</td>
-                    <td>{p.phone || '—'}</td>
-
-                    <td>
-                      {p.is_active ? (
-                        <span className="badge badge--green">Active</span>
-                      ) : (
-                        <span className="badge badge--gray">Inactive</span>
-                      )}
-                    </td>
-
-                    {isAdmin && (
+                  return (
+                    <tr key={p.id}>
                       <td>
-                        <button
-                          className="btn btn--ghost btn--sm"
-                          onClick={() => toggleActive(p.id, p.is_active)}
-                        >
-                          {p.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
+                        <div className="row">
+                          <div className="avatar">
+                            {p.avatar_url ? <img src={p.avatar_url} alt="" /> : initials(p)}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>
+                              {[p.first_name, p.last_name].filter(Boolean).join(' ') || '—'}
+                            </div>
+                            <div className="dim" style={{ fontSize: 12 }}>
+                              {p.email}
+                            </div>
+                          </div>
+                        </div>
                       </td>
-                    )}
-                  </tr>
-                ))}
+
+                      <td>
+                        {/* Editable dropdown only when this actor may manage this row;
+                            otherwise a read-only badge. */}
+                        {editable ? (
+                          <select
+                            className="select"
+                            style={{ maxWidth: 130 }}
+                            value={p.role || 'user'}
+                            onChange={(e) => changeRole(p, e.target.value)}
+                          >
+                            {options.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="badge badge--purple">{p.role || 'user'}</span>
+                        )}
+                      </td>
+
+                      <td>{p.department || '—'}</td>
+                      <td>{p.position || '—'}</td>
+                      <td>{p.phone || '—'}</td>
+
+                      <td>
+                        {p.is_active ? (
+                          <span className="badge badge--green">Active</span>
+                        ) : (
+                          <span className="badge badge--gray">Inactive</span>
+                        )}
+                      </td>
+
+                      {manageUsers && (
+                        <td>
+                          {editable ? (
+                            <button
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => toggleActive(p)}
+                            >
+                              {p.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                          ) : (
+                            <span className="dim" style={{ fontSize: 12 }}>
+                              —
+                            </span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

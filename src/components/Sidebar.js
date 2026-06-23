@@ -1,27 +1,36 @@
 // src/components/Sidebar.js
-// Left navigation. Links are filtered by the user's role so people only see
-// the sections they're allowed to use.
+// Left navigation. Every item is gated through a `visible()` predicate that
+// receives the full role context from useRole(), so menu entries appear/disappear
+// based on the signed-in user's role.
+//
+// Per the access matrix, all four roles may SEE the six core pages (their
+// restrictions are enforced inside each page), so those items are visible to
+// everyone. Admin/owner-only areas (e.g. user management, settings) use a
+// stricter predicate — see the commented example below.
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useRole } from '../hooks/useRole';
 
-// Each nav item lists the MINIMUM role needed to see it.
-// 'user' = visible to everyone who is logged in.
+// Each item's `visible` receives the useRole() context and returns a boolean.
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: '🏠', minRole: 'user', end: true },
-  { to: '/directory', label: 'Directory', icon: '👥', minRole: 'user' },
-  { to: '/scheduling', label: 'Scheduling', icon: '🗓️', minRole: 'user' },
-  { to: '/timeclock', label: 'Time Clock', icon: '⏱️', minRole: 'user' },
-  { to: '/announcements', label: 'Announcements', icon: '📣', minRole: 'user' },
-  { to: '/notifications', label: 'Notifications', icon: '🔔', minRole: 'user' },
+  { to: '/', label: 'Dashboard', icon: '🏠', end: true, visible: () => true },
+  { to: '/directory', label: 'Directory', icon: '👥', visible: () => true },
+  { to: '/scheduling', label: 'Scheduling', icon: '🗓️', visible: () => true },
+  { to: '/timeclock', label: 'Time Clock', icon: '⏱️', visible: () => true },
+  { to: '/announcements', label: 'Announcements', icon: '📣', visible: () => true },
+  { to: '/notifications', label: 'Notifications', icon: '🔔', visible: () => true },
+
+  // Example of an admin/owner-only menu entry. Managers and users would NOT see it:
+  // { to: '/settings', label: 'Settings', icon: '⚙️', visible: (r) => r.canManageUsers() },
 ];
 
 export default function Sidebar() {
-  const { role, isAtLeast } = useRole();
+  const roleCtx = useRole();
+  const { role } = roleCtx;
 
-  // Keep only the items this role is allowed to see.
-  const visibleItems = NAV_ITEMS.filter((item) => isAtLeast(item.minRole));
+  // Keep only the items whose predicate passes for this role.
+  const visibleItems = NAV_ITEMS.filter((item) => item.visible(roleCtx));
 
   return (
     <aside className="sidebar">

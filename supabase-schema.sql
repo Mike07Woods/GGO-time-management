@@ -129,6 +129,52 @@ as $$
   );
 $$;
 
+create or replace function public.is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select role from public.profiles where id = auth.uid()) = 'owner',
+    false
+  );
+$$;
+
+-- The caller's own role (used to target announcements at a role).
+create or replace function public.my_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select role from public.profiles where id = auth.uid();
+$$;
+
+-- True when `target` is on the caller's team (same, non-null department).
+-- NULL target (unassigned) is always allowed.
+create or replace function public.same_team(target uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when target is null then true
+    else exists (
+      select 1
+      from public.profiles me
+      join public.profiles tgt on tgt.id = target
+      where me.id = auth.uid()
+        and me.department is not null
+        and me.department = tgt.department
+    )
+  end;
+$$;
+
 -- ----------------------------------------------------------------------------
 -- AUTO-CREATE A PROFILE ON SIGN UP
 -- Server-side backup to the client-side bootstrap in AuthContext.js.
@@ -159,6 +205,64 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ----------------------------------------------------------------------------
+-- COLUMN-LEVEL GUARD: protect role / active-status changes on profiles.
+-- RLS lets a user update their OWN row (name, phone, avatar). This trigger makes
+-- sure that branch can't be abused to self-escalate a role, and pins the
+-- admin-can't-touch-admin/owner rule at the row level too.
+-- ----------------------------------------------------------------------------
+create or replace function public.enforce_profile_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor text;
+begin
+  -- No end-user in context (SQL Editor, service_role, server-side jobs) -> trusted,
+  -- skip the user-facing checks. This keeps the owner-bootstrap UPDATE working.
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  select role into actor from public.profiles where id = auth.uid();
+
+  -- Role changes
+  if new.role is distinct from old.role then
+    if actor = 'owner' then
+      null; -- owner may set any role
+    elsif actor = 'admin' then
+      if old.role in ('admin','owner') or new.role in ('admin','owner') then
+        raise exception 'Admins cannot assign or modify admin/owner roles';
+      end if;
+    else
+      raise exception 'You are not allowed to change roles';
+    end if;
+  end if;
+
+  -- Active-status changes (activate / deactivate)
+  if new.is_active is distinct from old.is_active then
+    if actor = 'owner' then
+      null;
+    elsif actor = 'admin' then
+      if old.role in ('admin','owner') then
+        raise exception 'Admins cannot change the status of admin/owner accounts';
+      end if;
+    else
+      raise exception 'You are not allowed to change account status';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_enforce_update on public.profiles;
+create trigger profiles_enforce_update
+  before update on public.profiles
+  for each row execute function public.enforce_profile_update();
+
+-- ----------------------------------------------------------------------------
 -- ENABLE ROW LEVEL SECURITY
 -- ----------------------------------------------------------------------------
 alter table public.profiles            enable row level security;
@@ -186,12 +290,21 @@ create policy profiles_select on public.profiles
 create policy profiles_insert_self on public.profiles
   for insert to authenticated with check (id = auth.uid());
 
--- A user can update their own row; admins/owners can update anyone
--- (e.g. changing roles or active status from the Directory).
+-- A user can update their own row; owners can update anyone; admins can update
+-- anyone EXCEPT admin/owner accounts. (The enforce_profile_update trigger
+-- additionally stops self-role-escalation on the own-row branch.)
 create policy profiles_update on public.profiles
   for update to authenticated
-  using (id = auth.uid() or public.is_admin())
-  with check (id = auth.uid() or public.is_admin());
+  using (
+    id = auth.uid()
+    or public.is_owner()
+    or (public.is_admin() and role not in ('admin','owner'))
+  )
+  with check (
+    id = auth.uid()
+    or public.is_owner()
+    or (public.is_admin() and role not in ('admin','owner'))
+  );
 
 -- ---- shifts ----------------------------------------------------------------
 drop policy if exists shifts_select on public.shifts;
@@ -199,17 +312,29 @@ drop policy if exists shifts_insert on public.shifts;
 drop policy if exists shifts_update on public.shifts;
 drop policy if exists shifts_delete on public.shifts;
 
+-- Users see only shifts assigned to (or created by) them; managers+ see all.
 create policy shifts_select on public.shifts
-  for select to authenticated using (true);
+  for select to authenticated
+  using (public.is_manager() or assigned_to = auth.uid() or created_by = auth.uid());
 
+-- Create as yourself; admins/owners assign to anyone, managers to their team only.
 create policy shifts_insert on public.shifts
-  for insert to authenticated with check (public.is_manager());
+  for insert to authenticated
+  with check (
+    created_by = auth.uid()
+    and (public.is_admin() or (public.is_manager() and public.same_team(assigned_to)))
+  );
 
+-- Managers+ may publish/cancel any shift they can see. (Team scoping is enforced
+-- at insert time, above — that's where assignment happens.)
 create policy shifts_update on public.shifts
-  for update to authenticated using (public.is_manager()) with check (public.is_manager());
+  for update to authenticated
+  using (public.is_manager())
+  with check (public.is_manager());
 
+-- Only admins/owners may hard-delete a shift (managers cannot delete).
 create policy shifts_delete on public.shifts
-  for delete to authenticated using (public.is_manager());
+  for delete to authenticated using (public.is_admin());
 
 -- ---- time_entries ----------------------------------------------------------
 drop policy if exists time_entries_select on public.time_entries;
@@ -232,25 +357,28 @@ drop policy if exists announcements_insert on public.announcements;
 drop policy if exists announcements_update on public.announcements;
 drop policy if exists announcements_delete on public.announcements;
 
+-- Read only the announcements aimed at you (everyone / your role); admins see all.
 create policy announcements_select on public.announcements
-  for select to authenticated using (true);
+  for select to authenticated
+  using (target_role is null or target_role = public.my_role() or public.is_admin());
 
+-- Only admins/owners may post / edit / delete announcements (managers read-only).
 create policy announcements_insert on public.announcements
-  for insert to authenticated with check (public.is_manager());
+  for insert to authenticated with check (public.is_admin());
 
 create policy announcements_update on public.announcements
-  for update to authenticated using (public.is_manager()) with check (public.is_manager());
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
 create policy announcements_delete on public.announcements
-  for delete to authenticated using (public.is_manager());
+  for delete to authenticated using (public.is_admin());
 
 -- ---- announcement_reads ----------------------------------------------------
 drop policy if exists reads_select on public.announcement_reads;
 drop policy if exists reads_insert on public.announcement_reads;
 
--- See your own receipts; managers+ can see all (for read counts).
+-- See your own receipts; admins/owners can see all (for read counts).
 create policy reads_select on public.announcement_reads
-  for select to authenticated using (user_id = auth.uid() or public.is_manager());
+  for select to authenticated using (user_id = auth.uid() or public.is_admin());
 
 create policy reads_insert on public.announcement_reads
   for insert to authenticated with check (user_id = auth.uid());

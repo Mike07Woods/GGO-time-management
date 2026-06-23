@@ -1,7 +1,8 @@
 // src/pages/Announcements.js
 // Announcements + read receipts.
-// Everyone sees announcements aimed at them and can acknowledge (mark read).
-// Managers+ can post announcements and see how many people have read each one.
+//   USER / MANAGER -> read only: can view announcements aimed at them and
+//                     acknowledge (mark read). No create button.
+//   ADMIN / OWNER  -> can post announcements and see read-receipt counts.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
@@ -29,11 +30,14 @@ function formatDate(value) {
 
 export default function Announcements() {
   const { user, profile } = useAuth();
-  const { isManager } = useRole();
+  const { canCreate } = useRole();
+
+  // Only admins/owners may post announcements (managers are read-only).
+  const canPost = canCreate('announcement');
 
   const [announcements, setAnnouncements] = useState([]);
   const [readIds, setReadIds] = useState(new Set()); // announcements *I* have read
-  const [readCounts, setReadCounts] = useState({}); // id -> total reads (managers only)
+  const [readCounts, setReadCounts] = useState({}); // id -> total reads (posters only)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -63,8 +67,8 @@ export default function Announcements() {
       .eq('user_id', user.id);
     setReadIds(new Set((myReads.data || []).map((r) => r.announcement_id)));
 
-    // Read-receipt counts (RLS only returns full data to managers+).
-    if (isManager && list.length > 0) {
+    // Read-receipt counts are only shown to those who can post (admin/owner).
+    if (canPost && list.length > 0) {
       const ids = list.map((a) => a.id);
       const allReads = await supabase
         .from('announcement_reads')
@@ -105,10 +109,11 @@ export default function Announcements() {
     }));
   }
 
-  // Post a new announcement (managers+).
+  // Post a new announcement (admin/owner only).
   async function postAnnouncement(e) {
     e.preventDefault();
     setError('');
+    if (!canPost) return; // belt-and-braces guard
     if (!form.title || !form.body) {
       setError('Title and message are required.');
       return;
@@ -149,8 +154,8 @@ export default function Announcements() {
 
       {error && <div className="alert alert--error">{error}</div>}
 
-      {/* Post form — managers and above */}
-      {isManager && (
+      {/* Post form — admin/owner only */}
+      {canPost && (
         <div className="card" style={{ marginBottom: 22 }}>
           <div className="card__title">Post an announcement</div>
           <form onSubmit={postAnnouncement}>
@@ -222,8 +227,8 @@ export default function Announcements() {
                 <div className="list-item__meta row row--between">
                   <span>{formatDate(a.created_at)}</span>
                   <span className="row" style={{ gap: 14 }}>
-                    {/* Managers see total read count */}
-                    {isManager && <span>👁 {readCounts[a.id] || 0} read</span>}
+                    {/* Only posters (admin/owner) see the read count */}
+                    {canPost && <span>👁 {readCounts[a.id] || 0} read</span>}
                     {haveRead ? (
                       <span className="badge badge--green">✓ Read</span>
                     ) : (
