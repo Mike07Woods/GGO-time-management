@@ -22,6 +22,15 @@ const NAV_ITEMS = [
   { to: '/announcements', label: 'Announcements', icon: '📣', visible: () => true },
   { to: '/notifications', label: 'Notifications', icon: '🔔', visible: () => true },
 
+  // --- Phase 2 ---
+  { to: '/timesheets', label: 'Timesheets', icon: '📋', visible: () => true },
+  // Overtime is for managers and above only.
+  { to: '/overtime', label: 'Overtime', icon: '⏰', visible: (r) => r.isManager },
+  { to: '/forms', label: 'Forms', icon: '📝', visible: () => true },
+  { to: '/tasks', label: 'Tasks', icon: '✅', visible: () => true },
+  // Reports are owner/admin only.
+  { to: '/reports', label: 'Reports', icon: '📊', visible: (r) => r.isAdmin },
+
   // Example of an admin/owner-only menu entry. Managers and users would NOT see it:
   // { to: '/settings', label: 'Settings', icon: '⚙️', visible: (r) => r.canManageUsers() },
 ];

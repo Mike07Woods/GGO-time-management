@@ -17,6 +17,13 @@ import TimeClock from './pages/TimeClock';
 import Announcements from './pages/Announcements';
 import Notifications from './pages/Notifications';
 
+// Phase 2 pages
+import Timesheets from './pages/Timesheets';
+import Overtime from './pages/Overtime';
+import Forms from './pages/Forms';
+import Tasks from './pages/Tasks';
+import Reports from './pages/Reports';
+
 // The chrome shown around every authenticated page.
 // ProtectedRoute guards it; <Outlet /> renders the matched child route.
 function ProtectedLayout() {
@@ -57,6 +64,29 @@ export default function App() {
         <Route path="/timeclock" element={<TimeClock />} />
         <Route path="/announcements" element={<Announcements />} />
         <Route path="/notifications" element={<Notifications />} />
+
+        {/* --- Phase 2 routes --- */}
+        <Route path="/timesheets" element={<Timesheets />} />
+        {/* Overtime is manager and above only */}
+        <Route
+          path="/overtime"
+          element={
+            <ProtectedRoute requiredRole="manager">
+              <Overtime />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/forms" element={<Forms />} />
+        <Route path="/tasks" element={<Tasks />} />
+        {/* Reports are owner/admin only */}
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <Reports />
+            </ProtectedRoute>
+          }
+        />
         {/*
           Example of a role-restricted route (left here as documentation):
           <Route
