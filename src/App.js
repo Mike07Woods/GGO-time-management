@@ -24,6 +24,13 @@ import Forms from './pages/Forms';
 import Tasks from './pages/Tasks';
 import Reports from './pages/Reports';
 
+// Phase 3 pages
+import Chat from './pages/Chat';
+import KnowledgeBase from './pages/KnowledgeBase';
+import HelpDesk from './pages/HelpDesk';
+import Events from './pages/Events';
+import AuditLog from './pages/AuditLog';
+
 // The chrome shown around every authenticated page.
 // ProtectedRoute guards it; <Outlet /> renders the matched child route.
 function ProtectedLayout() {
@@ -84,6 +91,21 @@ export default function App() {
           element={
             <ProtectedRoute requiredRole="admin">
               <Reports />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* --- Phase 3 routes --- */}
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/knowledge" element={<KnowledgeBase />} />
+        <Route path="/helpdesk" element={<HelpDesk />} />
+        <Route path="/events" element={<Events />} />
+        {/* Audit Log is owner only */}
+        <Route
+          path="/audit"
+          element={
+            <ProtectedRoute requiredRole="owner">
+              <AuditLog />
             </ProtectedRoute>
           }
         />

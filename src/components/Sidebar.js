@@ -31,6 +31,14 @@ const NAV_ITEMS = [
   // Reports are owner/admin only.
   { to: '/reports', label: 'Reports', icon: '📊', visible: (r) => r.isAdmin },
 
+  // --- Phase 3 ---
+  { to: '/chat', label: 'Chat', icon: '💬', visible: () => true },
+  { to: '/knowledge', label: 'Knowledge Base', icon: '📚', visible: () => true },
+  { to: '/helpdesk', label: 'Help Desk', icon: '🛟', visible: () => true },
+  { to: '/events', label: 'Events', icon: '📆', visible: () => true },
+  // Audit Log is owner only.
+  { to: '/audit', label: 'Audit Log', icon: '🛡️', visible: (r) => r.isOwner },
+
   // Example of an admin/owner-only menu entry. Managers and users would NOT see it:
   // { to: '/settings', label: 'Settings', icon: '⚙️', visible: (r) => r.canManageUsers() },
 ];
