@@ -15,7 +15,8 @@ import { useRole } from '../hooks/useRole';
 // Each item's `visible` receives the useRole() context and returns a boolean.
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '🏠', end: true, visible: () => true },
-  { to: '/directory', label: 'Directory', icon: '👥', visible: () => true },
+  // Directory is hidden from regular users — managers and above only.
+  { to: '/directory', label: 'Directory', icon: '👥', visible: (r) => r.isManager },
   { to: '/scheduling', label: 'Scheduling', icon: '🗓️', visible: () => true },
   { to: '/timeclock', label: 'Time Clock', icon: '⏱️', visible: () => true },
   { to: '/announcements', label: 'Announcements', icon: '📣', visible: () => true },

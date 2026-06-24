@@ -44,7 +44,15 @@ export default function App() {
       {/* Protected area — everything below requires a logged-in user */}
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/directory" element={<Directory />} />
+        {/* Directory is blocked for regular users — managers and above only */}
+        <Route
+          path="/directory"
+          element={
+            <ProtectedRoute requiredRole="manager">
+              <Directory />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/scheduling" element={<Scheduling />} />
         <Route path="/timeclock" element={<TimeClock />} />
         <Route path="/announcements" element={<Announcements />} />
