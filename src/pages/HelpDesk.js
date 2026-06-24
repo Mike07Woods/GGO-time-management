@@ -54,7 +54,7 @@ export default function HelpDesk() {
   const nameById = useMemo(() => {
     const map = {};
     people.forEach((p) => {
-      map[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email;
+      map[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Member';
     });
     return map;
   }, [people]);
@@ -63,9 +63,11 @@ export default function HelpDesk() {
     setLoading(true);
     const [tRes, pRes] = await Promise.all([
       supabase.from('helpdesk_tickets').select('*').order('created_at', { ascending: false }),
+      // Sanitized lookup view — lets regular ticket submitters see assignee /
+      // commenter names without access to the full directory.
       supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email')
+        .from('profiles_public')
+        .select('id, first_name, last_name, avatar_url')
         .eq('is_active', true)
         .order('first_name', { ascending: true }),
     ]);

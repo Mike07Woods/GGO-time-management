@@ -282,9 +282,13 @@ drop policy if exists profiles_select        on public.profiles;
 drop policy if exists profiles_insert_self   on public.profiles;
 drop policy if exists profiles_update        on public.profiles;
 
--- Any logged-in user can read the directory.
+-- Regular users may read only their OWN full profile; managers/admins/owners
+-- may read the full directory. Name/avatar lookups for everyone else go through
+-- the sanitized public.profiles_public view (created below). See
+-- supabase-security.sql for the rationale (the directory RLS split).
 create policy profiles_select on public.profiles
-  for select to authenticated using (true);
+  for select to authenticated
+  using (id = auth.uid() or public.is_manager());
 
 -- A user can create their own profile row (first-login bootstrap).
 create policy profiles_insert_self on public.profiles
@@ -305,6 +309,18 @@ create policy profiles_update on public.profiles
     or public.is_owner()
     or (public.is_admin() and role not in ('admin','owner'))
   );
+
+-- Sanitized lookup view: basic, non-sensitive fields readable by ANY logged-in
+-- user (names/avatars for shift assignees, chat, events, etc.) without exposing
+-- the full directory. Runs with definer rights to bypass the restrictive
+-- profiles_select policy above, but only returns the columns listed here.
+drop view if exists public.profiles_public;
+create view public.profiles_public
+with (security_invoker = false) as
+  select id, first_name, last_name, avatar_url, is_active
+  from public.profiles;
+revoke all on public.profiles_public from anon, public;
+grant select on public.profiles_public to authenticated;
 
 -- ---- shifts ----------------------------------------------------------------
 drop policy if exists shifts_select on public.shifts;

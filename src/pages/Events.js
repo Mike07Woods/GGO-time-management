@@ -54,7 +54,7 @@ export default function Events() {
   const nameById = useMemo(() => {
     const map = {};
     people.forEach((p) => {
-      map[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email;
+      map[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Member';
     });
     return map;
   }, [people]);
@@ -67,7 +67,9 @@ export default function Events() {
         .select('*')
         .or(`target_role.is.null,target_role.eq.${myRole}`)
         .order('start_time', { ascending: true }),
-      supabase.from('profiles').select('id, first_name, last_name, email').eq('is_active', true),
+      // Sanitized lookup view — attendee names are visible to all without
+      // exposing the full directory.
+      supabase.from('profiles_public').select('id, first_name, last_name, avatar_url').eq('is_active', true),
     ]);
     if (evRes.error) setError(evRes.error.message);
     const evs = evRes.data || [];

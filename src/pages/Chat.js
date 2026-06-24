@@ -47,7 +47,7 @@ export default function Chat() {
   const nameById = useMemo(() => {
     const map = {};
     people.forEach((p) => {
-      map[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email;
+      map[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Member';
     });
     return map;
   }, [people]);
@@ -64,10 +64,12 @@ export default function Chat() {
   );
 
   // Load the people directory (for names + starting DMs).
+  // Uses the sanitized profiles_public view so non-managers can resolve names
+  // without access to the full directory.
   useEffect(() => {
     supabase
-      .from('profiles')
-      .select('id, first_name, last_name, email')
+      .from('profiles_public')
+      .select('id, first_name, last_name, avatar_url')
       .eq('is_active', true)
       .order('first_name', { ascending: true })
       .then(({ data }) => setPeople(data || []));
