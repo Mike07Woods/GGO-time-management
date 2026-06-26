@@ -1,20 +1,24 @@
 // src/components/Navbar.js
-// Top bar: page title, notification bell with live unread count, user info, logout.
+// Top bar: GGO brand lockup (left), theme toggle + notification bell + user (right).
 
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
+import logoFullWhite from '../assets/ggo-full-white.png';
+import logoFullBlack from '../assets/ggo-full-black.png';
 
-// Map route paths to friendly titles shown in the navbar.
-const PAGE_TITLES = {
-  '/': 'Dashboard',
-  '/directory': 'Employee Directory',
-  '/scheduling': 'Shift Scheduling',
-  '/timeclock': 'Time Clock',
-  '/announcements': 'Announcements',
-  '/notifications': 'Notifications',
-};
+// GGO full logo lockup. Swaps white/dark artwork to stay legible on both the
+// dark and light navbar.
+function BrandLockup({ theme }) {
+  return (
+    <img
+      src={theme === 'light' ? logoFullBlack : logoFullWhite}
+      alt="Gulf Global Outsourcing"
+      style={{ height: '32px', objectFit: 'contain', display: 'block' }}
+    />
+  );
+}
 
 // Build initials from the profile (e.g. "Jane Doe" -> "JD").
 function getInitials(profile, email) {
@@ -27,11 +31,27 @@ function getInitials(profile, email) {
 export default function Navbar() {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [unread, setUnread] = useState(0);
 
-  const title = PAGE_TITLES[location.pathname] || 'GGO Time Management';
+  // Theme toggle (light/dark). Initialized from the body class the no-flash
+  // script set on load; toggling updates the body class + localStorage.
+  const [theme, setTheme] = useState(() =>
+    typeof document !== 'undefined' && document.body.classList.contains('light-mode')
+      ? 'light'
+      : 'dark'
+  );
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    document.body.className = next === 'light' ? 'light-mode' : 'dark-mode';
+    try {
+      localStorage.setItem('ggo-theme', next);
+    } catch (e) {
+      /* ignore storage errors */
+    }
+  }
 
   // Load the unread notification count, and keep it live with realtime.
   useEffect(() => {
@@ -76,9 +96,14 @@ export default function Navbar() {
 
   return (
     <header className="navbar">
-      <div className="navbar__title">{title}</div>
+      <BrandLockup theme={theme} />
 
       <div className="navbar__right">
+        {/* Light / dark theme toggle (moon in dark, sun in light) */}
+        <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
+          {theme === 'dark' ? '🌙' : '☀️'}
+        </button>
+
         {/* Notification bell with unread badge */}
         <button
           className="navbar__bell"

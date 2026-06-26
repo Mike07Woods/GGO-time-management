@@ -1,13 +1,13 @@
 // src/pages/Login.js
-// Authentication screen with three modes: sign in, forgot password, sign up.
-// Sign up is included so the first account can be created (which then triggers
-// the first-login profile bootstrap in AuthContext).
+// Authentication screen — split brand panel (left) + form (right).
+// Three modes: sign in, forgot password, sign up. Auth logic is unchanged from
+// the original; only the layout/branding was updated.
 
 import React, { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import fullLogoWhite from '../assets/ggo-full-white.png';
 
-// The three UI modes this screen can be in.
 const MODES = { SIGN_IN: 'sign_in', FORGOT: 'forgot', SIGN_UP: 'sign_up' };
 
 export default function Login() {
@@ -25,10 +25,8 @@ export default function Login() {
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Where to go after a successful login (back to the page they wanted, or dashboard).
   const redirectTo = location.state?.from?.pathname || '/';
 
-  // If already logged in, don't show the login page — go straight in.
   if (!loading && user) {
     return <Navigate to={redirectTo} replace />;
   }
@@ -58,8 +56,6 @@ export default function Login() {
         });
         if (error) throw error;
 
-        // If email confirmation is OFF, Supabase returns an active session and
-        // the auth listener will log us in automatically. If it's ON, tell the user.
         if (data?.session) {
           navigate(redirectTo, { replace: true });
         } else {
@@ -81,14 +77,13 @@ export default function Login() {
     }
   }
 
-  // Per-mode text.
   const titles = {
-    [MODES.SIGN_IN]: 'Welcome back',
+    [MODES.SIGN_IN]: 'Sign in to your workspace',
     [MODES.FORGOT]: 'Reset your password',
     [MODES.SIGN_UP]: 'Create your account',
   };
   const subtitles = {
-    [MODES.SIGN_IN]: 'Sign in to your GGO Time Management workspace.',
+    [MODES.SIGN_IN]: 'Welcome to GGO Time Management.',
     [MODES.FORGOT]: "Enter your email and we'll send a reset link.",
     [MODES.SIGN_UP]: 'Set up your account to get started.',
   };
@@ -99,130 +94,135 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-brand">
-          <div className="sidebar__logo">GG</div>
-          <div>
-            <div className="auth-title">GGO Time Management</div>
-          </div>
-        </div>
+    <div className="auth-layout">
+      {/* Left: GGO brand panel */}
+      <div className="auth-brand-panel">
+        <img
+          src={fullLogoWhite}
+          alt="Gulf Global Outsourcing"
+          style={{ height: '48px', objectFit: 'contain', marginBottom: '8px', display: 'block', position: 'relative', zIndex: 1 }}
+        />
+        <div className="auth-brand-tag">Time Management</div>
+      </div>
 
-        <h2 style={{ marginBottom: 4 }}>{titles[mode]}</h2>
-        <p className="auth-sub">{subtitles[mode]}</p>
+      {/* Right: login form */}
+      <div className="auth-form-panel">
+        <div className="auth-card">
+          <h2 className="auth-title" style={{ marginBottom: 4 }}>
+            {titles[mode]}
+          </h2>
+          <p className="auth-sub">{subtitles[mode]}</p>
 
-        {error && <div className="alert alert--error">{error}</div>}
-        {info && <div className="alert alert--success">{info}</div>}
+          {error && <div className="alert alert--error">{error}</div>}
+          {info && <div className="alert alert--success">{info}</div>}
 
-        <form onSubmit={handleSubmit}>
-          {/* Name fields only when creating an account */}
-          {mode === MODES.SIGN_UP && (
-            <div className="form-row">
-              <div className="field">
-                <label htmlFor="firstName">First name</label>
-                <input
-                  id="firstName"
-                  className="input"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  autoComplete="given-name"
-                />
+          <form onSubmit={handleSubmit}>
+            {mode === MODES.SIGN_UP && (
+              <div className="form-row">
+                <div className="field">
+                  <label htmlFor="firstName">First name</label>
+                  <input
+                    id="firstName"
+                    className="input"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    autoComplete="given-name"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="lastName">Last name</label>
+                  <input
+                    id="lastName"
+                    className="input"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    autoComplete="family-name"
+                  />
+                </div>
               </div>
-              <div className="field">
-                <label htmlFor="lastName">Last name</label>
-                <input
-                  id="lastName"
-                  className="input"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  autoComplete="family-name"
-                />
-              </div>
-            </div>
-          )}
+            )}
 
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="you@company.com"
-            />
-          </div>
-
-          {/* Password is hidden in forgot-password mode */}
-          {mode !== MODES.FORGOT && (
             <div className="field">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="email">Email</label>
               <input
-                id="password"
-                type="password"
+                id="email"
+                type="email"
                 className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                minLength={6}
-                autoComplete={mode === MODES.SIGN_UP ? 'new-password' : 'current-password'}
-                placeholder="••••••••"
+                autoComplete="email"
+                placeholder="you@company.com"
               />
             </div>
+
+            {mode !== MODES.FORGOT && (
+              <div className="field">
+                <label htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  className="input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete={mode === MODES.SIGN_UP ? 'new-password' : 'current-password'}
+                  placeholder="••••••••"
+                />
+              </div>
+            )}
+
+            <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
+              {busy ? 'Please wait…' : submitLabels[mode]}
+            </button>
+          </form>
+
+          {mode === MODES.SIGN_IN && (
+            <>
+              <div className="auth-switch">
+                <button
+                  type="button"
+                  className="auth-link"
+                  onClick={() => {
+                    resetMessages();
+                    setMode(MODES.FORGOT);
+                  }}
+                >
+                  Forgot your password?
+                </button>
+              </div>
+              <div className="auth-switch">
+                Need an account?{' '}
+                <button
+                  type="button"
+                  className="auth-link"
+                  onClick={() => {
+                    resetMessages();
+                    setMode(MODES.SIGN_UP);
+                  }}
+                >
+                  Sign up
+                </button>
+              </div>
+            </>
           )}
 
-          <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
-            {busy ? 'Please wait…' : submitLabels[mode]}
-          </button>
-        </form>
-
-        {/* Mode switches */}
-        {mode === MODES.SIGN_IN && (
-          <>
+          {mode !== MODES.SIGN_IN && (
             <div className="auth-switch">
               <button
                 type="button"
                 className="auth-link"
                 onClick={() => {
                   resetMessages();
-                  setMode(MODES.FORGOT);
+                  setMode(MODES.SIGN_IN);
                 }}
               >
-                Forgot your password?
+                ← Back to sign in
               </button>
             </div>
-            <div className="auth-switch">
-              Need an account?{' '}
-              <button
-                type="button"
-                className="auth-link"
-                onClick={() => {
-                  resetMessages();
-                  setMode(MODES.SIGN_UP);
-                }}
-              >
-                Sign up
-              </button>
-            </div>
-          </>
-        )}
-
-        {mode !== MODES.SIGN_IN && (
-          <div className="auth-switch">
-            <button
-              type="button"
-              className="auth-link"
-              onClick={() => {
-                resetMessages();
-                setMode(MODES.SIGN_IN);
-              }}
-            >
-              ← Back to sign in
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

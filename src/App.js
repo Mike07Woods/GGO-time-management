@@ -2,12 +2,14 @@
 // Top-level routing. Public /login, plus a protected layout (sidebar + navbar)
 // that wraps all seven authenticated pages.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
+import ChatPopup from './components/ChatPopup';
+import LoadingScreen from './components/LoadingScreen';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -36,22 +38,31 @@ import AuditLog from './pages/AuditLog';
 function ProtectedLayout() {
   return (
     <ProtectedRoute>
-      <div className="app-shell">
-        <Sidebar />
-        <div className="app-main">
-          <Navbar />
-          <main className="app-content">
-            <Outlet />
-          </main>
+      <>
+        <div className="app-shell">
+          <Sidebar />
+          <div className="app-main">
+            <Navbar />
+            <main className="app-content">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
+        {/* Floating chat widget — visible on every authenticated page */}
+        <ChatPopup />
+      </>
     </ProtectedRoute>
   );
 }
 
 export default function App() {
+  // Branded splash on first load (~2.2s + fade).
+  const [booting, setBooting] = useState(true);
+
   return (
-    <Routes>
+    <>
+      {booting && <LoadingScreen onComplete={() => setBooting(false)} />}
+      <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
 
@@ -124,6 +135,7 @@ export default function App() {
 
       {/* Anything else -> dashboard */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }

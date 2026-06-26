@@ -106,10 +106,12 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Welcome back, {firstName} 👋</h1>
-          <p>Here's a quick look at your day.</p>
+      <div className="dashboard-hero">
+        <div className="page-header" style={{ margin: 0 }}>
+          <div>
+            <h1>Welcome back, {firstName} 👋</h1>
+            <p>Here's a quick look at your day.</p>
+          </div>
         </div>
       </div>
 

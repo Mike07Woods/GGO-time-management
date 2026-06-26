@@ -4,18 +4,18 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Theme color (navy) so the browser chrome / no-JS flash matches the app -->
-    <meta name="theme-color" content="#0F1C2E" />
+    <!-- Theme color so the browser chrome / no-JS flash matches the app -->
+    <meta name="theme-color" content="#0A0F1E" />
     <meta
       name="description"
       content="GGO Time Management — scheduling, time clock, announcements and team directory."
     />
 
-    <!-- Inter font from Google Fonts (preconnect first for faster loading) -->
+    <!-- Plus Jakarta Sans (modern, rounded — closest Google Fonts match to TT Firs Neue) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
 
@@ -28,11 +28,25 @@
       #root {
         margin: 0;
         min-height: 100%;
-        background: #0f1c2e;
+        background: #0a0f1e;
       }
     </style>
+
+    <!-- Apply the saved light/dark theme BEFORE React mounts to avoid a flash.
+         Defaults to dark mode. The Navbar toggle updates this + localStorage. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('ggo-theme');
+          var mode = saved === 'light' ? 'light-mode' : 'dark-mode';
+          document.addEventListener('DOMContentLoaded', function () {
+            document.body.className = mode;
+          });
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body>
+  <body class="dark-mode">
     <noscript>You need to enable JavaScript to run this app.</noscript>
 
     <!-- React mounts the entire application into this element (see src/index.js) -->
