@@ -39,6 +39,16 @@ export default function Chat() {
   const [groupName, setGroupName] = useState('');
   const [groupMembers, setGroupMembers] = useState([]);
 
+  // On mobile we show the conversation list OR the thread, not both.
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // Refs so the realtime handler always sees current values (avoids stale closures).
   const activeRef = useRef(null);
   const channelIdsRef = useRef(new Set());
@@ -295,11 +305,12 @@ export default function Chat() {
       {/* Chat layout */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ display: 'flex', height: '68vh' }}>
-          {/* Left: conversations */}
+          {/* Left: conversations (hidden on mobile while a thread is open) */}
+          {(!isMobile || !activeId) && (
           <div
             style={{
-              width: 280,
-              borderRight: '1px solid var(--border)',
+              width: isMobile ? '100%' : 280,
+              borderRight: isMobile ? 'none' : '1px solid var(--border)',
               display: 'flex',
               flexDirection: 'column',
               minWidth: 0,
@@ -364,8 +375,10 @@ export default function Chat() {
               </select>
             </div>
           </div>
+          )}
 
-          {/* Right: thread */}
+          {/* Right: thread (on mobile, only when a conversation is open) */}
+          {(!isMobile || activeId) && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             {!activeId ? (
               <div className="empty-state" style={{ margin: 'auto' }}>
@@ -373,7 +386,25 @@ export default function Chat() {
               </div>
             ) : (
               <>
-                <div style={{ padding: 14, borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                <div
+                  style={{
+                    padding: 14,
+                    borderBottom: '1px solid var(--border)',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  {isMobile && (
+                    <button
+                      onClick={() => setActiveId(null)}
+                      style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 18 }}
+                      aria-label="Back to conversations"
+                    >
+                      ←
+                    </button>
+                  )}
                   {channelLabel(channels.find((c) => c.id === activeId) || {})}
                 </div>
 
@@ -441,6 +472,7 @@ export default function Chat() {
               </>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

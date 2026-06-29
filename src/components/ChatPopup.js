@@ -6,6 +6,7 @@
 // Self-contained: own data + realtime subscription. Chat.js page is untouched.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 
@@ -382,23 +383,77 @@ export default function ChatPopup() {
       )}
 
       {/* Bubble */}
-      <button
-        style={bubble}
-        title="Messages"
-        onClick={() => {
-          setOpen((o) => !o);
-          if (!open) loadChannels();
-        }}
-      >
-        {/* Speech bubble with a lightning bolt — fast, real-time comms */}
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M20 2H4C2.9 2 2 2.9 2 4V16C2 17.1 2.9 18 4 18H7L12 23L17 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z"
-            fill="white"
+      <style>{`
+        @keyframes pulse-ring {
+          0% { transform: scale(0.8); opacity: 0.8; }
+          100% { transform: scale(1.6); opacity: 0; }
+        }
+        @keyframes bounce-dot {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+      `}</style>
+      <div style={{ position: 'relative', width: 56, height: 56, marginLeft: 'auto' }}>
+        {/* Pulsing ring — only while the panel is closed */}
+        {!open && (
+          <span
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '50%',
+              background: '#004BC8',
+              animation: 'pulse-ring 2s ease-out infinite',
+              zIndex: 0,
+            }}
+            aria-hidden="true"
           />
-          <path d="M13 4L9 11H13L11 17L15 10H11L13 4Z" fill="#004BC8" />
-        </svg>
-        {totalUnread > 0 && (
+        )}
+        <button
+          style={{ ...bubble, zIndex: 1 }}
+          title={open ? 'Close chat' : 'Messages'}
+          onClick={() => {
+            setOpen((o) => !o);
+            if (!open) loadChannels();
+          }}
+        >
+          {open ? (
+            <X size={20} color="#fff" />
+          ) : (
+            // Typing-indicator style: three bouncing dots
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <div
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  animation: 'bounce-dot 1s ease-in-out infinite',
+                  animationDelay: '0s',
+                }}
+              />
+              <div
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  animation: 'bounce-dot 1s ease-in-out infinite',
+                  animationDelay: '0.15s',
+                }}
+              />
+              <div
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  animation: 'bounce-dot 1s ease-in-out infinite',
+                  animationDelay: '0.3s',
+                }}
+              />
+            </div>
+          )}
+          {totalUnread > 0 && (
           <span
             style={{
               position: 'absolute',
@@ -419,7 +474,8 @@ export default function ChatPopup() {
             {totalUnread > 99 ? '99+' : totalUnread}
           </span>
         )}
-      </button>
+        </button>
+      </div>
     </div>
   );
 }

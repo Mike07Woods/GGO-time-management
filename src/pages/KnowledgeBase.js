@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 const EMPTY = { title: '', content: '', category: '', tags: '', is_published: true };
@@ -13,6 +14,7 @@ const EMPTY = { title: '', content: '', category: '', tags: '', is_published: tr
 export default function KnowledgeBase() {
   const { user } = useAuth();
   const { isAdmin } = useRole(); // owner/admin can author
+  const toast = useToast();
 
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,9 +120,10 @@ export default function KnowledgeBase() {
 
     setSaving(false);
     if (resp.error) {
-      setError(resp.error.message);
+      toast.error(resp.error.message);
       return;
     }
+    toast.success(editing === 'new' ? 'Article published' : 'Article updated');
     setEditing(null);
     loadArticles();
   }
@@ -129,11 +132,12 @@ export default function KnowledgeBase() {
     setError('');
     const { error } = await supabase.from('knowledge_articles').delete().eq('id', id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setSelected(null);
     loadArticles();
+    toast.success('Article deleted');
   }
 
   // ---- Editor view ----

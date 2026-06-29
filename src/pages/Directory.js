@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 function initials(p) {
@@ -16,6 +17,8 @@ function initials(p) {
 export default function Directory() {
   // Capability helpers drive every management control on this page.
   const { canManageUsers, canManageUser, assignableRoles } = useRole();
+
+  const toast = useToast();
 
   const manageUsers = canManageUsers(); // admin + owner
   const roleOptions = assignableRoles(); // roles THIS actor may assign
@@ -50,10 +53,11 @@ export default function Directory() {
     }
     const { error } = await supabase.from('profiles').update({ role }).eq('id', person.id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setPeople((prev) => prev.map((p) => (p.id === person.id ? { ...p, role } : p)));
+    toast.success(`Role updated to ${role}`);
   }
 
   // Activate / deactivate a person (same management rule as role changes).
@@ -68,12 +72,13 @@ export default function Directory() {
       .update({ is_active: !person.is_active })
       .eq('id', person.id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setPeople((prev) =>
       prev.map((p) => (p.id === person.id ? { ...p, is_active: !person.is_active } : p))
     );
+    toast.success(person.is_active ? 'User deactivated' : 'User activated');
   }
 
   // Client-side search filter.
