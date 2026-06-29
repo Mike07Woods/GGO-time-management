@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 const FIELD_TYPES = [
@@ -33,6 +34,7 @@ function fieldKey(label, index) {
 export default function Forms() {
   const { user, profile } = useAuth();
   const { canCreate } = useRole();
+  const toast = useToast();
   const canBuild = canCreate('form'); // owner/admin
 
   const [forms, setForms] = useState([]);
@@ -118,12 +120,13 @@ export default function Forms() {
       .single();
     setSaving(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setForms((prev) => [data, ...prev]);
     setMeta({ title: '', description: '', is_mandatory: false, target_role: '' });
     setFields([]);
+    toast.success('Form created');
   }
 
   // ---- Fill & submit ----
@@ -147,12 +150,13 @@ export default function Forms() {
     });
     setSubmitting(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setMySubmittedIds((prev) => new Set(prev).add(activeForm.id));
     setActiveForm(null);
     setAnswers({});
+    toast.success('Response submitted');
   }
 
   // ---- Submissions (owner/admin) ----

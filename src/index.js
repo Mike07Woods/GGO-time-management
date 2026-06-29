@@ -7,6 +7,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 
 // Global stylesheet — loaded once here so the theme applies across the whole app.
 import './styles/global.css';
@@ -20,7 +21,10 @@ root.render(
     <BrowserRouter>
       {/* AuthProvider exposes the session, user, profile and role to every page. */}
       <AuthProvider>
-        <App />
+        {/* ToastProvider exposes useToast() for app-wide notifications. */}
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

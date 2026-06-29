@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 const COLUMNS = [
@@ -40,6 +41,7 @@ function formatDue(value) {
 export default function Tasks() {
   const { user } = useAuth();
   const { isManager } = useRole();
+  const toast = useToast();
 
   const [tasks, setTasks] = useState([]);
   const [people, setPeople] = useState([]);
@@ -103,11 +105,12 @@ export default function Tasks() {
       .single();
     setSaving(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setTasks((prev) => [data, ...prev]);
     setForm(EMPTY_FORM);
+    toast.success('Task created');
 
     // Notify the assignee (reuses the Phase 1 notifications feature).
     if (data.assigned_to) {
@@ -124,7 +127,7 @@ export default function Tasks() {
     setError('');
     const { error } = await supabase.from('tasks').update({ status }).eq('id', task.id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
@@ -266,7 +269,7 @@ export default function Tasks() {
       {loading ? (
         <p className="muted">Loading tasks…</p>
       ) : (
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="kanban">
           {COLUMNS.map((col) => {
             const colTasks = filtered.filter((t) => t.status === col.key);
             return (

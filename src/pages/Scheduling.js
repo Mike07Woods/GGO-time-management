@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 // Map a shift status to a badge style.
@@ -33,6 +34,7 @@ const EMPTY_FORM = { title: '', assigned_to: '', start_time: '', end_time: '', l
 export default function Scheduling() {
   const { user, profile } = useAuth();
   const { canCreate, canEdit, isManager, isAdmin } = useRole();
+  const toast = useToast();
 
   const canCreateShift = canCreate('shift'); // manager and above
   const canManageShift = canEdit('shift'); // manager and above (publish/cancel)
@@ -146,7 +148,7 @@ export default function Scheduling() {
     setSaving(false);
 
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
 
@@ -154,6 +156,7 @@ export default function Scheduling() {
       [...prev, data].sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
     );
     setForm(EMPTY_FORM);
+    toast.success(publish ? 'Shift published' : 'Draft saved');
 
     if (publish) await notifyAssignee(data);
   }
@@ -167,10 +170,11 @@ export default function Scheduling() {
       .update({ status: 'published' })
       .eq('id', shift.id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setShifts((prev) => prev.map((s) => (s.id === shift.id ? { ...s, status: 'published' } : s)));
+    toast.success('Shift published');
     await notifyAssignee(shift);
   }
 
@@ -180,10 +184,11 @@ export default function Scheduling() {
     if (!canManageShift) return;
     const { error } = await supabase.from('shifts').update({ status: 'cancelled' }).eq('id', id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'cancelled' } : s)));
+    toast.info('Shift cancelled');
   }
 
   return (

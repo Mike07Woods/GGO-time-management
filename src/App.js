@@ -38,20 +38,34 @@ import AuditLog from './pages/AuditLog';
 function ProtectedLayout() {
   return (
     <ProtectedRoute>
-      <>
-        <div className="app-shell">
-          <Sidebar />
-          <div className="app-main">
-            <Navbar />
-            <main className="app-content">
-              <Outlet />
-            </main>
-          </div>
-        </div>
-        {/* Floating chat widget — visible on every authenticated page */}
-        <ChatPopup />
-      </>
+      <ShellWithSidebar />
     </ProtectedRoute>
+  );
+}
+
+// Authenticated shell: sidebar (drawer on mobile) + navbar + page content.
+function ShellWithSidebar() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  return (
+    <>
+      <div className="app-shell">
+        <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+        {/* Backdrop behind the mobile drawer */}
+        <div
+          className={'gsb-backdrop' + (mobileNavOpen ? ' show' : '')}
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+        <div className="app-main">
+          <Navbar onMenuClick={() => setMobileNavOpen(true)} />
+          <main className="app-content">
+            <Outlet />
+          </main>
+        </div>
+      </div>
+      {/* Floating chat widget — visible on every authenticated page */}
+      <ChatPopup />
+    </>
   );
 }
 

@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -42,6 +43,7 @@ function prettyDate(d) {
 export default function Timesheets() {
   const { user, profile } = useAuth();
   const { isManager } = useRole();
+  const toast = useToast();
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedUser, setSelectedUser] = useState(user.id);
@@ -176,11 +178,12 @@ export default function Timesheets() {
       .upsert(payload, { onConflict: 'user_id,week_start' });
     setBusy(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     loadWeek();
     loadList();
+    toast.success('Timesheet submitted for approval');
   }
 
   // Approve / reject a timesheet (managers+).
@@ -191,11 +194,12 @@ export default function Timesheets() {
       .update({ status, approved_by: user.id, approved_at: new Date().toISOString() })
       .eq('id', ts.id);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     loadWeek();
     loadList();
+    toast.success(`Timesheet ${status}`);
   }
 
   const viewingOwn = selectedUser === user.id;

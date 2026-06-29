@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 const RSVP_OPTIONS = [
@@ -38,6 +39,7 @@ function formatDateTime(value) {
 export default function Events() {
   const { user, profile } = useAuth();
   const { isManager } = useRole();
+  const toast = useToast();
 
   const [events, setEvents] = useState([]);
   const [rsvps, setRsvps] = useState([]); // all rsvps for visible events
@@ -127,13 +129,14 @@ export default function Events() {
       .single();
     setSaving(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setEvents((prev) =>
       [...prev, data].sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
     );
     setForm(EMPTY);
+    toast.success('Event created');
   }
 
   // Upsert my RSVP for an event.
@@ -143,13 +146,14 @@ export default function Events() {
       .from('event_rsvps')
       .upsert({ event_id: eventId, user_id: user.id, status }, { onConflict: 'event_id,user_id' });
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setRsvps((prev) => {
       const without = prev.filter((r) => !(r.event_id === eventId && r.user_id === user.id));
       return [...without, { event_id: eventId, user_id: user.id, status }];
     });
+    toast.success('RSVP saved');
   }
 
   const now = useMemo(() => new Date(), []);

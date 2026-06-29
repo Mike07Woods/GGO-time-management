@@ -75,7 +75,7 @@ const GROUPS = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onClose }) {
   const roleCtx = useRole();
   const { role } = roleCtx;
   const { user, profile, signOut } = useAuth();
@@ -110,7 +110,10 @@ export default function Sidebar() {
     [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user?.email || 'User';
 
   return (
-    <aside className={'gsb' + (collapsed ? ' gsb--collapsed' : '')} style={{ width: collapsed ? 60 : 210 }}>
+    <aside
+      className={'gsb' + (collapsed ? ' gsb--collapsed' : '') + (mobileOpen ? ' gsb--mobile-open' : '')}
+      style={{ width: collapsed ? 60 : 210 }}
+    >
       <style>{`
         /* Sidebar stays on its dark treatment in both themes. */
         .gsb {
@@ -192,6 +195,21 @@ export default function Sidebar() {
           color: #fff; border-color: rgba(255,255,255,0.2); background: transparent;
         }
         .gsb__logout button:hover { background: rgba(255,255,255,0.06); }
+
+        /* Mobile: sidebar becomes an off-canvas drawer */
+        @media (max-width: 768px) {
+          .gsb {
+            position: fixed;
+            top: 0; left: 0;
+            width: 264px !important;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            z-index: 200;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+          }
+          .gsb.gsb--mobile-open { transform: translateX(0); }
+          .gsb__toggle { display: none; }
+        }
       `}</style>
 
       {/* Top: full logo (icon + name) when expanded, icon-only when collapsed */}
@@ -227,6 +245,7 @@ export default function Sidebar() {
                     to={item.to}
                     end={item.end}
                     data-label={item.label}
+                    onClick={onClose}
                     className={({ isActive }) => 'gsb__item' + (isActive ? ' active' : '')}
                   >
                     <Icon size={18} />

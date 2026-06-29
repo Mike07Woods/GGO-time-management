@@ -6,6 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 // Promisified geolocation lookup. Resolves to { lat, lng } or rejects with a message.
@@ -41,12 +42,12 @@ function formatCoords(lat, lng) {
 
 export default function TimeClock() {
   const { user } = useAuth();
+  const toast = useToast();
 
   const [entry, setEntry] = useState(null); // current open entry (active/on_break)
   const [history, setHistory] = useState([]); // recent completed entries
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
 
   // Tick every second so the elapsed timer updates live.
@@ -88,7 +89,6 @@ export default function TimeClock() {
 
   // CLOCK IN — capture GPS then open a new entry.
   async function clockIn() {
-    setError('');
     setBusy(true);
 
     let coords = { lat: null, lng: null };
@@ -96,7 +96,7 @@ export default function TimeClock() {
       coords = await getPosition();
     } catch (geoErr) {
       // Still allow clocking in, but tell the user the location wasn't captured.
-      setError(`Location not captured: ${geoErr.message}`);
+      toast.info(`Location not captured: ${geoErr.message}`);
     }
 
     const { data, error } = await supabase
@@ -113,15 +113,15 @@ export default function TimeClock() {
 
     setBusy(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setEntry(data);
+    toast.success('Clocked in');
   }
 
   // START BREAK
   async function startBreak() {
-    setError('');
     setBusy(true);
     const { data, error } = await supabase
       .from('time_entries')
@@ -131,15 +131,15 @@ export default function TimeClock() {
       .single();
     setBusy(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setEntry(data);
+    toast.info('Break started');
   }
 
   // END BREAK
   async function endBreak() {
-    setError('');
     setBusy(true);
     const { data, error } = await supabase
       .from('time_entries')
@@ -149,22 +149,22 @@ export default function TimeClock() {
       .single();
     setBusy(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setEntry(data);
+    toast.success('Break ended');
   }
 
   // CLOCK OUT — capture GPS, compute total hours (minus any break), complete.
   async function clockOut() {
-    setError('');
     setBusy(true);
 
     let coords = { lat: null, lng: null };
     try {
       coords = await getPosition();
     } catch (geoErr) {
-      setError(`Location not captured: ${geoErr.message}`);
+      toast.info(`Location not captured: ${geoErr.message}`);
     }
 
     const clockOutAt = new Date();
@@ -190,11 +190,12 @@ export default function TimeClock() {
 
     setBusy(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setEntry(null);
     loadState();
+    toast.success(`Clocked out — ${totalHours.toFixed(2)} h logged`);
   }
 
   // Live elapsed time since clock-in (HH:MM:SS).
@@ -218,8 +219,6 @@ export default function TimeClock() {
           <p>Clock in and out — your location is stamped automatically.</p>
         </div>
       </div>
-
-      {error && <div className="alert alert--error">{error}</div>}
 
       <div className="grid grid--2">
         {/* Current status / actions */}

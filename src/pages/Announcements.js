@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 const TARGET_OPTIONS = [
@@ -31,6 +32,7 @@ function formatDate(value) {
 export default function Announcements() {
   const { user, profile } = useAuth();
   const { canCreate } = useRole();
+  const toast = useToast();
 
   // Only admins/owners may post announcements (managers are read-only).
   const canPost = canCreate('announcement');
@@ -99,7 +101,7 @@ export default function Announcements() {
         { onConflict: 'announcement_id,user_id', ignoreDuplicates: true }
       );
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setReadIds((prev) => new Set(prev).add(announcementId));
@@ -131,11 +133,12 @@ export default function Announcements() {
       .single();
     setPosting(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setAnnouncements((prev) => [data, ...prev]);
     setForm({ title: '', body: '', target_role: '' });
+    toast.success('Announcement posted');
   }
 
   const unreadCount = useMemo(

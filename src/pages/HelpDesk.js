@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 
 // Exact priority colours requested in the spec.
@@ -39,6 +40,7 @@ function formatDate(value) {
 export default function HelpDesk() {
   const { user } = useAuth();
   const { isManager } = useRole();
+  const toast = useToast();
 
   const [tickets, setTickets] = useState([]);
   const [people, setPeople] = useState([]);
@@ -103,11 +105,12 @@ export default function HelpDesk() {
       .single();
     setSaving(false);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setTickets((prev) => [data, ...prev]);
     setForm(EMPTY);
+    toast.success('Ticket submitted');
   }
 
   async function openTicket(ticket) {
@@ -134,7 +137,7 @@ export default function HelpDesk() {
       .select()
       .single();
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setComments((prev) => [...prev, data]);
@@ -148,10 +151,11 @@ export default function HelpDesk() {
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', ticketId);
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       return;
     }
     setTickets((prev) => prev.map((t) => (t.id === ticketId ? { ...t, ...patch } : t)));
+    toast.success('Ticket updated');
   }
 
   return (

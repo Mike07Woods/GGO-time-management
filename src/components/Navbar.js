@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Menu } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 import logoFullWhite from '../assets/ggo-full-white.png';
@@ -28,7 +29,7 @@ function getInitials(profile, email) {
   return initials || (email?.[0]?.toUpperCase() ?? '?');
 }
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick }) {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -96,7 +97,13 @@ export default function Navbar() {
 
   return (
     <header className="navbar">
-      <BrandLockup theme={theme} />
+      <div className="navbar__left">
+        {/* Hamburger — opens the sidebar drawer on mobile (hidden on desktop) */}
+        <button className="navbar__menu" onClick={onMenuClick} aria-label="Open menu">
+          <Menu size={22} />
+        </button>
+        <BrandLockup theme={theme} />
+      </div>
 
       <div className="navbar__right">
         {/* Light / dark theme toggle (moon in dark, sun in light) */}
