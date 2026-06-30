@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
+import Skeleton from '../components/Skeleton';
 
 // Format a timestamp like "Mon, Jun 23 · 9:00 AM".
 function formatDateTime(value) {
@@ -119,27 +120,33 @@ export default function Dashboard() {
       <div className="grid grid--stats">
         <Link to="/scheduling" className="stat">
           <div className="stat__label">Upcoming Shifts</div>
-          <div className="stat__value">{loading ? '—' : upcomingShifts.length}</div>
+          <div className="stat__value">
+            {loading ? <Skeleton width={56} height={30} style={{ marginTop: 6 }} /> : upcomingShifts.length}
+          </div>
           <div className="stat__hint">Published &amp; assigned to you</div>
         </Link>
 
         <Link to="/timeclock" className="stat">
           <div className="stat__label">Time Clock</div>
           <div className="stat__value" style={{ fontSize: 22, marginTop: 12 }}>
-            {clockStatus}
+            {loading ? <Skeleton width={110} height={22} /> : clockStatus}
           </div>
           <div className="stat__hint">Tap to clock in / out</div>
         </Link>
 
         <Link to="/announcements" className="stat">
           <div className="stat__label">Unread Announcements</div>
-          <div className="stat__value">{loading ? '—' : unreadAnnouncements}</div>
+          <div className="stat__value">
+            {loading ? <Skeleton width={56} height={30} style={{ marginTop: 6 }} /> : unreadAnnouncements}
+          </div>
           <div className="stat__hint">Tap to read &amp; acknowledge</div>
         </Link>
 
         <Link to="/notifications" className="stat">
           <div className="stat__label">Notifications</div>
-          <div className="stat__value">{loading ? '—' : unreadNotifications}</div>
+          <div className="stat__value">
+            {loading ? <Skeleton width={56} height={30} style={{ marginTop: 6 }} /> : unreadNotifications}
+          </div>
           <div className="stat__hint">Unread in-app alerts</div>
         </Link>
       </div>
@@ -154,7 +161,17 @@ export default function Dashboard() {
         </div>
 
         {loading ? (
-          <p className="muted">Loading…</p>
+          <div className="stack">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="row row--between" style={{ padding: '6px 0' }}>
+                <div style={{ flex: 1 }}>
+                  <Skeleton width="40%" height={14} style={{ marginBottom: 8 }} />
+                  <Skeleton width="60%" height={12} />
+                </div>
+                <Skeleton width={90} height={22} radius={999} />
+              </div>
+            ))}
+          </div>
         ) : upcomingShifts.length === 0 ? (
           <div className="empty-state">No upcoming shifts assigned to you yet.</div>
         ) : (

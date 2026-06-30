@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import Skeleton from '../components/Skeleton';
 
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
@@ -114,7 +115,17 @@ export default function Directory() {
 
       <div className="card">
         {loading ? (
-          <p className="muted">Loading directory…</p>
+          <div className="stack">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} className="row" style={{ padding: '8px 0', gap: 12 }}>
+                <Skeleton width={38} height={38} radius={999} />
+                <div style={{ flex: 1 }}>
+                  <Skeleton width="30%" height={14} style={{ marginBottom: 8 }} />
+                  <Skeleton width="45%" height={11} />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">No team members match your search.</div>
         ) : (

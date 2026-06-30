@@ -385,28 +385,33 @@ export default function ChatPopup() {
       {/* Bubble */}
       <style>{`
         @keyframes pulse-ring {
-          0% { transform: scale(0.8); opacity: 0.8; }
-          100% { transform: scale(1.6); opacity: 0; }
+          0% { transform: scale(1); opacity: 0.5; }
+          100% { transform: scale(1.8); opacity: 0; }
         }
-        @keyframes bounce-dot {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-3px); }
+        @keyframes orbit {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
+        @keyframes blink {
+          0%, 90%, 100% { transform: scaleY(1); }
+          95% { transform: scaleY(0.1); }
+        }
+        .pulse-ring {
+          position: absolute;
+          width: 56px; height: 56px;
+          border-radius: 50%;
+          background: #004BC8;
+          animation: pulse-ring 2s ease-out infinite;
+        }
+        .pulse-ring-delay { animation-delay: 0.8s; }
       `}</style>
       <div style={{ position: 'relative', width: 56, height: 56, marginLeft: 'auto' }}>
-        {/* Pulsing ring — only while the panel is closed */}
+        {/* Pulse rings — only while the panel is closed */}
         {!open && (
-          <span
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '50%',
-              background: '#004BC8',
-              animation: 'pulse-ring 2s ease-out infinite',
-              zIndex: 0,
-            }}
-            aria-hidden="true"
-          />
+          <>
+            <div className="pulse-ring" aria-hidden="true" />
+            <div className="pulse-ring pulse-ring-delay" aria-hidden="true" />
+          </>
         )}
         <button
           style={{ ...bubble, zIndex: 1 }}
@@ -419,61 +424,100 @@ export default function ChatPopup() {
           {open ? (
             <X size={20} color="#fff" />
           ) : (
-            // Typing-indicator style: three bouncing dots
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            // Presence orbit: a dot orbiting a little blinking face
+            <div style={{ width: '26px', height: '26px', position: 'relative' }}>
               <div
                 style={{
-                  width: '6px',
-                  height: '6px',
+                  width: '26px',
+                  height: '26px',
                   borderRadius: '50%',
-                  background: 'white',
-                  animation: 'bounce-dot 1s ease-in-out infinite',
-                  animationDelay: '0s',
+                  border: '2px solid rgba(255,255,255,0.25)',
                 }}
               />
               <div
                 style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: 'white',
-                  animation: 'bounce-dot 1s ease-in-out infinite',
-                  animationDelay: '0.15s',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '26px',
+                  height: '26px',
+                  animation: 'orbit 1.6s linear infinite',
                 }}
-              />
+              >
+                <div
+                  style={{
+                    width: '5px',
+                    height: '5px',
+                    borderRadius: '50%',
+                    background: 'white',
+                    position: 'absolute',
+                    top: '-2px',
+                    left: '10.5px',
+                  }}
+                />
+              </div>
               <div
                 style={{
-                  width: '6px',
-                  height: '6px',
+                  position: 'absolute',
+                  top: '6px',
+                  left: '6px',
+                  width: '14px',
+                  height: '14px',
                   borderRadius: '50%',
                   background: 'white',
-                  animation: 'bounce-dot 1s ease-in-out infinite',
-                  animationDelay: '0.3s',
                 }}
-              />
+              >
+                <div
+                  style={{
+                    width: '2px',
+                    height: '4px',
+                    background: '#004BC8',
+                    borderRadius: '1px',
+                    position: 'absolute',
+                    top: '5px',
+                    left: '4px',
+                    animation: 'blink 3s infinite',
+                  }}
+                />
+                <div
+                  style={{
+                    width: '2px',
+                    height: '4px',
+                    background: '#004BC8',
+                    borderRadius: '1px',
+                    position: 'absolute',
+                    top: '5px',
+                    left: '8px',
+                    animation: 'blink 3s infinite',
+                  }}
+                />
+              </div>
             </div>
           )}
           {totalUnread > 0 && (
-          <span
-            style={{
-              position: 'absolute',
-              top: -2,
-              right: -2,
-              minWidth: 20,
-              height: 20,
-              padding: '0 5px',
-              borderRadius: 10,
-              background: '#00D15E',
-              color: '#010101',
-              fontSize: 11,
-              fontWeight: 800,
-              display: 'grid',
-              placeItems: 'center',
-            }}
-          >
-            {totalUnread > 99 ? '99+' : totalUnread}
-          </span>
-        )}
+            <div
+              style={{
+                position: 'absolute',
+                top: '-4px',
+                right: '-4px',
+                minWidth: '18px',
+                height: '18px',
+                padding: '0 4px',
+                background: '#00D15E',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 700,
+                color: 'white',
+                zIndex: 2,
+                boxSizing: 'border-box',
+              }}
+            >
+              {totalUnread > 9 ? '9+' : totalUnread}
+            </div>
+          )}
         </button>
       </div>
     </div>
