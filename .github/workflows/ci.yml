@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --watchAll=false
+        env:
+          CI: true
+          # Dummy values so any module that constructs the Supabase client at
+          # import time doesn't fail during CI (no real credentials needed).
+          REACT_APP_SUPABASE_URL: https://example.supabase.co
+          REACT_APP_SUPABASE_ANON_KEY: ci-dummy-anon-key
+
+      - name: Production build
+        run: npm run build
+        env:
+          CI: true
+          REACT_APP_SUPABASE_URL: https://example.supabase.co
+          REACT_APP_SUPABASE_ANON_KEY: ci-dummy-anon-key
