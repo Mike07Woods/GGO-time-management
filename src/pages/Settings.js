@@ -2,7 +2,7 @@
 // Self-service settings: edit your own profile, change your password, and pick a
 // theme. Available to every authenticated user (reached from the navbar gear).
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
@@ -10,6 +10,65 @@ import { supabase } from '../supabaseClient';
 export default function Settings() {
   const { user, profile, refreshProfile } = useAuth();
   const toast = useToast();
+
+  const avatarInitials =
+    ((profile?.first_name?.[0] || '') + (profile?.last_name?.[0] || '')).toUpperCase() ||
+    (user?.email?.[0]?.toUpperCase() ?? '?');
+
+  // --- Avatar ---
+  const fileRef = useRef(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Image must be under 2 MB.');
+      return;
+    }
+    setUploadingAvatar(true);
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+    const path = `${user.id}/avatar.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, cacheControl: '3600' });
+    if (upErr) {
+      setUploadingAvatar(false);
+      toast.error(
+        /bucket not found/i.test(upErr.message)
+          ? 'Avatar storage isn’t set up yet — run supabase-avatars.sql.'
+          : upErr.message
+      );
+      return;
+    }
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    const publicUrl = `${data.publicUrl}?t=${Date.now()}`; // cache-bust same-path re-uploads
+    const { error } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+    setUploadingAvatar(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (refreshProfile) await refreshProfile();
+    toast.success('Photo updated');
+  }
+
+  async function removeAvatar() {
+    setUploadingAvatar(true);
+    const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', user.id);
+    setUploadingAvatar(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (refreshProfile) await refreshProfile();
+    toast.success('Photo removed');
+  }
 
   // --- Profile ---
   const [form, setForm] = useState({
@@ -94,6 +153,46 @@ export default function Settings() {
         {/* Profile */}
         <div className="card">
           <div className="card__title">Profile</div>
+
+          {/* Avatar */}
+          <div className="row" style={{ gap: 16, marginBottom: 20 }}>
+            <div className="avatar avatar--lg">
+              {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : avatarInitials}
+            </div>
+            <div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleAvatarChange}
+              />
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={uploadingAvatar}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploadingAvatar ? 'Uploading…' : 'Upload photo'}
+                </button>
+                {profile?.avatar_url && (
+                  <button
+                    type="button"
+                    className="btn btn--danger btn--sm"
+                    disabled={uploadingAvatar}
+                    onClick={removeAvatar}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
+                JPG or PNG, up to 2 MB.
+              </div>
+            </div>
+          </div>
+
           <form onSubmit={saveProfile}>
             <div className="form-row">
               <div className="field">
