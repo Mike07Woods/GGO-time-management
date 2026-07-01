@@ -3,22 +3,16 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Settings } from 'lucide-react';
+import { Menu, Settings, Sun, Moon, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
-import logoFullWhite from '../assets/ggo-full-white.png';
-import logoFullBlack from '../assets/ggo-full-black.png';
+import logoIconWhite from '../assets/ggo-icon-white.png';
+import logoIconBlack from '../assets/ggo-icon-black.png';
 
-// GGO full logo lockup. Swaps white/dark artwork to stay legible on both the
-// dark and light navbar.
+// GGO logo mark only (no wordmark — unreadable at header size). Swaps white/dark
+// artwork per theme; dark mode also gets mix-blend-mode: screen (see global.css).
 function BrandLockup({ theme }) {
-  return (
-    <img
-      src={theme === 'light' ? logoFullBlack : logoFullWhite}
-      alt="Gulf Global Outsourcing"
-      style={{ height: '32px', objectFit: 'contain', display: 'block' }}
-    />
-  );
+  return <img className="logo" src={theme === 'light' ? logoIconBlack : logoIconWhite} alt="GGO" />;
 }
 
 // Build initials from the profile (e.g. "Jane Doe" -> "JD").
@@ -107,22 +101,23 @@ export default function Navbar({ onMenuClick }) {
 
       <div className="navbar__right">
         {/* Light / dark theme toggle (moon in dark, sun in light) */}
-        <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
-          {theme === 'dark' ? '🌙' : '☀️'}
+        <button className="navbar__icon" title="Toggle theme" aria-label="Toggle theme" onClick={toggleTheme}>
+          {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
 
         {/* Settings */}
-        <button className="icon-btn" title="Settings" onClick={() => navigate('/settings')}>
+        <button className="navbar__icon" title="Settings" aria-label="Settings" onClick={() => navigate('/settings')}>
           <Settings size={20} />
         </button>
 
         {/* Notification bell with unread badge */}
         <button
-          className="navbar__bell"
+          className="navbar__icon"
           title="Notifications"
+          aria-label="Notifications"
           onClick={() => navigate('/notifications')}
         >
-          🔔
+          <Bell size={20} />
           {unread > 0 && <span className="badge-count">{unread > 99 ? '99+' : unread}</span>}
         </button>
 
@@ -141,8 +136,10 @@ export default function Navbar({ onMenuClick }) {
           </div>
         </div>
 
-        <button className="btn btn--ghost btn--sm" onClick={handleLogout}>
-          Logout
+        {/* Logout — text link on desktop, icon-only on mobile */}
+        <button className="navbar__logout" onClick={handleLogout} title="Log out" aria-label="Log out">
+          <LogOut className="navbar__logout-icon" size={18} />
+          <span className="navbar__logout-text">Logout</span>
         </button>
       </div>
     </header>

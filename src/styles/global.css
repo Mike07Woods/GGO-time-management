@@ -330,6 +330,77 @@ p {
   background: var(--bg-hover);
 }
 
+/* Header logo mark. mix-blend-mode: screen drops the (black) background on the
+   dark navbar; scoped to dark mode so the dark logo stays visible in light mode. */
+.logo {
+  height: 30px;
+  object-fit: contain;
+  display: block;
+}
+
+body.dark-mode .logo {
+  mix-blend-mode: screen;
+}
+
+/* Plain header icon buttons — no pill/background, just the icon. */
+.navbar__icon {
+  position: relative;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.navbar__icon:hover {
+  color: var(--text-primary);
+}
+
+/* Logout — plain text link (icon-only on mobile). */
+.navbar__logout {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s;
+}
+
+.navbar__logout:hover {
+  color: var(--text-primary);
+}
+
+.navbar__logout-icon {
+  display: none;
+}
+
+/* Mobile header (< 768px) */
+@media (max-width: 768px) {
+  .navbar {
+    height: 52px;
+  }
+  .logo {
+    height: 28px;
+  }
+  .navbar__right {
+    gap: 12px;
+  }
+  .navbar__logout-text {
+    display: none;
+  }
+  .navbar__logout-icon {
+    display: inline-flex;
+  }
+}
+
 /* Backdrop behind the mobile sidebar drawer */
 .gsb-backdrop {
   position: fixed;
