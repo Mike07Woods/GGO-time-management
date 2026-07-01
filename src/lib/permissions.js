@@ -90,3 +90,37 @@ export function assignableRoles(role) {
   if (isAdmin(role)) return ['user', 'manager'];
   return [];
 }
+
+// ---------------------------------------------------------------------------
+// Page access — the single source of truth for BOTH sidebar visibility and
+// route guarding (keyed by route key). ('user' === regular employee.)
+// ---------------------------------------------------------------------------
+const ALL = ['user', 'manager', 'admin', 'owner'];
+
+export const PAGE_ACCESS = {
+  dashboard: ALL,
+  timeclock: ALL,
+  announcements: ALL,
+  notifications: ALL,
+  chat: ALL,
+  tasks: ALL,
+  forms: ALL,
+
+  directory: ['manager', 'admin', 'owner'],
+  scheduling: ['manager', 'admin', 'owner'],
+  timesheets: ['manager', 'admin', 'owner'],
+  reports: ['manager', 'admin', 'owner'],
+
+  overtime: ['admin', 'owner'],
+  knowledge: ['admin', 'owner'],
+  helpdesk: ['admin', 'owner'],
+  events: ['admin', 'owner'],
+
+  audit: ['owner'],
+};
+
+// Can `role` access the page identified by `key`? Unknown keys default to allow.
+export function canAccessPage(role, key) {
+  const allowed = PAGE_ACCESS[key];
+  return allowed ? allowed.includes(role) : true;
+}

@@ -13,6 +13,7 @@ import {
   canManageUsers,
   canManageUser,
   assignableRoles,
+  canAccessPage,
 } from './permissions';
 
 const ROLES = ['user', 'manager', 'admin', 'owner'];
@@ -121,5 +122,42 @@ describe('user management', () => {
     const assignable = assignableRoles('admin');
     expect(assignable).not.toContain('admin');
     expect(assignable).not.toContain('owner');
+  });
+});
+
+describe('canAccessPage', () => {
+  test('everyone can reach the shared pages', () => {
+    for (const key of ['dashboard', 'timeclock', 'announcements', 'notifications', 'chat', 'tasks', 'forms']) {
+      for (const role of ROLES) expect(canAccessPage(role, key)).toBe(true);
+    }
+  });
+
+  test('employees cannot reach directory / scheduling / timesheets / reports', () => {
+    for (const key of ['directory', 'scheduling', 'timesheets', 'reports']) {
+      expect(canAccessPage('user', key)).toBe(false);
+      expect(canAccessPage('manager', key)).toBe(true);
+      expect(canAccessPage('admin', key)).toBe(true);
+      expect(canAccessPage('owner', key)).toBe(true);
+    }
+  });
+
+  test('overtime + SYSTEM pages are admin/owner only', () => {
+    for (const key of ['overtime', 'knowledge', 'helpdesk', 'events']) {
+      expect(canAccessPage('user', key)).toBe(false);
+      expect(canAccessPage('manager', key)).toBe(false);
+      expect(canAccessPage('admin', key)).toBe(true);
+      expect(canAccessPage('owner', key)).toBe(true);
+    }
+  });
+
+  test('audit log is owner-only', () => {
+    expect(canAccessPage('user', 'audit')).toBe(false);
+    expect(canAccessPage('manager', 'audit')).toBe(false);
+    expect(canAccessPage('admin', 'audit')).toBe(false);
+    expect(canAccessPage('owner', 'audit')).toBe(true);
+  });
+
+  test('unknown page keys default to accessible', () => {
+    expect(canAccessPage('user', 'something-new')).toBe(true);
   });
 });

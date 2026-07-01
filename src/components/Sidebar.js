@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { canAccessPage } from '../lib/permissions';
 import logoIconWhite from '../assets/ggo-icon-white.png';
 import logoFullWhite from '../assets/ggo-full-white.png';
 
@@ -34,50 +35,58 @@ function initials(profile, email) {
   return (f + l).toUpperCase() || (email?.[0]?.toUpperCase() ?? '?');
 }
 
-// Nav items grouped into labelled sections. `icon` is a Lucide component; each
-// item's `visible` predicate receives the useRole() context.
+// Nav items grouped into labelled sections. `key` maps to the page-access rules
+// in src/lib/permissions.js (the single source of truth shared with the router).
 const GROUPS = [
   {
     label: 'Main',
     items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, visible: () => true },
-      { to: '/directory', label: 'Directory', icon: Users, visible: (r) => r.isManager },
-      { to: '/scheduling', label: 'Scheduling', icon: CalendarDays, visible: () => true },
-      { to: '/timeclock', label: 'Time Clock', icon: Clock, visible: () => true },
+      { to: '/', key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/directory', key: 'directory', label: 'Directory', icon: Users },
+      { to: '/scheduling', key: 'scheduling', label: 'Scheduling', icon: CalendarDays },
+      { to: '/timeclock', key: 'timeclock', label: 'Time Clock', icon: Clock },
     ],
   },
   {
     label: 'Comms',
     items: [
-      { to: '/announcements', label: 'Announcements', icon: Megaphone, visible: () => true },
-      { to: '/notifications', label: 'Notifications', icon: Bell, visible: () => true },
-      { to: '/chat', label: 'Chat', icon: MessageSquare, visible: () => true },
+      { to: '/announcements', key: 'announcements', label: 'Announcements', icon: Megaphone },
+      { to: '/notifications', key: 'notifications', label: 'Notifications', icon: Bell },
+      { to: '/chat', key: 'chat', label: 'Chat', icon: MessageSquare },
     ],
   },
   {
     label: 'Manage',
     items: [
-      { to: '/tasks', label: 'Tasks', icon: CheckSquare, visible: () => true },
-      { to: '/forms', label: 'Forms', icon: ClipboardList, visible: () => true },
-      { to: '/timesheets', label: 'Timesheets', icon: Timer, visible: () => true },
-      { to: '/overtime', label: 'Overtime', icon: AlarmClock, visible: (r) => r.isManager },
-      { to: '/reports', label: 'Reports', icon: BarChart2, visible: (r) => r.isAdmin },
+      { to: '/tasks', key: 'tasks', label: 'Tasks', icon: CheckSquare },
+      { to: '/forms', key: 'forms', label: 'Forms', icon: ClipboardList },
+      { to: '/timesheets', key: 'timesheets', label: 'Timesheets', icon: Timer },
+      { to: '/overtime', key: 'overtime', label: 'Overtime', icon: AlarmClock },
+      { to: '/reports', key: 'reports', label: 'Reports', icon: BarChart2 },
     ],
   },
   {
     label: 'System',
     items: [
-      { to: '/knowledge', label: 'Knowledge Base', icon: BookOpen, visible: () => true },
-      { to: '/helpdesk', label: 'Help Desk', icon: LifeBuoy, visible: () => true },
-      { to: '/events', label: 'Events', icon: CalendarCheck, visible: () => true },
-      { to: '/audit', label: 'Audit Log', icon: ScrollText, visible: (r) => r.isOwner },
+      { to: '/knowledge', key: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
+      { to: '/helpdesk', key: 'helpdesk', label: 'Help Desk', icon: LifeBuoy },
+      { to: '/events', key: 'events', label: 'Events', icon: CalendarCheck },
+      { to: '/audit', key: 'audit', label: 'Audit Log', icon: ScrollText },
     ],
   },
 ];
 
+// Filter groups + items for a role. Groups with no visible items are dropped
+// entirely so their section label isn't rendered.
+export function getVisibleNavItems(role) {
+  return GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => canAccessPage(role, item.key)),
+  })).filter((group) => group.items.length > 0);
+}
+
 export default function Sidebar({ mobileOpen = false, onClose }) {
-  const roleCtx = useRole();
-  const { role } = roleCtx;
+  const { role } = useRole();
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -229,11 +238,10 @@ export default function Sidebar({ mobileOpen = false, onClose }) {
         </button>
       </div>
 
-      {/* Grouped nav */}
+      {/* Grouped nav — filtered by role (empty sections are dropped) */}
       <nav className="gsb__nav">
-        {GROUPS.map((group) => {
-          const items = group.items.filter((i) => i.visible(roleCtx));
-          if (items.length === 0) return null;
+        {getVisibleNavItems(role).map((group) => {
+          const items = group.items;
           return (
             <div className="gsb__group" key={group.label}>
               {!collapsed && <div className="gsb__section">{group.label}</div>}

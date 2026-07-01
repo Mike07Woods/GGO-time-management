@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import ProtectedRoute from './components/ProtectedRoute';
+import RequireAccess from './components/RequireAccess';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import ChatPopup from './components/ChatPopup';
@@ -81,59 +82,29 @@ export default function App() {
       <Route path="/login" element={<Login />} />
 
       {/* Protected area — everything below requires a logged-in user */}
+      {/* Page access is governed by src/lib/permissions.js (PAGE_ACCESS).
+          RequireAccess redirects to the dashboard if the role isn't allowed. */}
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<Dashboard />} />
-        {/* Directory is blocked for regular users — managers and above only */}
-        <Route
-          path="/directory"
-          element={
-            <ProtectedRoute requiredRole="manager">
-              <Directory />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/scheduling" element={<Scheduling />} />
+        <Route path="/directory" element={<RequireAccess pageKey="directory"><Directory /></RequireAccess>} />
+        <Route path="/scheduling" element={<RequireAccess pageKey="scheduling"><Scheduling /></RequireAccess>} />
         <Route path="/timeclock" element={<TimeClock />} />
         <Route path="/announcements" element={<Announcements />} />
         <Route path="/notifications" element={<Notifications />} />
 
         {/* --- Phase 2 routes --- */}
-        <Route path="/timesheets" element={<Timesheets />} />
-        {/* Overtime is manager and above only */}
-        <Route
-          path="/overtime"
-          element={
-            <ProtectedRoute requiredRole="manager">
-              <Overtime />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/timesheets" element={<RequireAccess pageKey="timesheets"><Timesheets /></RequireAccess>} />
+        <Route path="/overtime" element={<RequireAccess pageKey="overtime"><Overtime /></RequireAccess>} />
         <Route path="/forms" element={<Forms />} />
         <Route path="/tasks" element={<Tasks />} />
-        {/* Reports are owner/admin only */}
-        <Route
-          path="/reports"
-          element={
-            <ProtectedRoute requiredRole="admin">
-              <Reports />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/reports" element={<RequireAccess pageKey="reports"><Reports /></RequireAccess>} />
 
         {/* --- Phase 3 routes --- */}
         <Route path="/chat" element={<Chat />} />
-        <Route path="/knowledge" element={<KnowledgeBase />} />
-        <Route path="/helpdesk" element={<HelpDesk />} />
-        <Route path="/events" element={<Events />} />
-        {/* Audit Log is owner only */}
-        <Route
-          path="/audit"
-          element={
-            <ProtectedRoute requiredRole="owner">
-              <AuditLog />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/knowledge" element={<RequireAccess pageKey="knowledge"><KnowledgeBase /></RequireAccess>} />
+        <Route path="/helpdesk" element={<RequireAccess pageKey="helpdesk"><HelpDesk /></RequireAccess>} />
+        <Route path="/events" element={<RequireAccess pageKey="events"><Events /></RequireAccess>} />
+        <Route path="/audit" element={<RequireAccess pageKey="audit"><AuditLog /></RequireAccess>} />
         {/*
           Example of a role-restricted route (left here as documentation):
           <Route
