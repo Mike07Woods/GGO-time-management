@@ -494,6 +494,66 @@ body.light-mode .skeleton::after {
   }
 }
 
+/* Striped table (User Management) */
+.table--striped tbody tr:nth-child(even) td {
+  background: rgba(127, 143, 163, 0.06);
+}
+
+/* Modal (add/edit dialogs) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  padding: 22px;
+}
+
+/* Right-side drawer (department members) */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: 340px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
+  padding: 20px;
+  overflow-y: auto;
+  animation: drawerIn 0.2s ease;
+}
+
+@keyframes drawerIn {
+  from {
+    transform: translateX(20px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 /* Kanban board (Tasks) — three columns, stacks on small screens */
 .kanban {
   display: grid;

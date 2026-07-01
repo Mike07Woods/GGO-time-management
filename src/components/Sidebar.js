@@ -22,6 +22,8 @@ import {
   LifeBuoy,
   CalendarCheck,
   ScrollText,
+  Building2,
+  UserCog,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
@@ -71,6 +73,8 @@ const GROUPS = [
       { to: '/knowledge', key: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
       { to: '/helpdesk', key: 'helpdesk', label: 'Help Desk', icon: LifeBuoy },
       { to: '/events', key: 'events', label: 'Events', icon: CalendarCheck },
+      { to: '/departments', key: 'departments', label: 'Departments', icon: Building2 },
+      { to: '/users', key: 'users', label: 'Users', icon: UserCog },
       { to: '/audit', key: 'audit', label: 'Audit Log', icon: ScrollText },
     ],
   },

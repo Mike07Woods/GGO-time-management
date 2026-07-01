@@ -13,6 +13,7 @@ import ChatPopup from './components/ChatPopup';
 import LoadingScreen from './components/LoadingScreen';
 
 import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Directory from './pages/Directory';
 import Scheduling from './pages/Scheduling';
@@ -33,6 +34,8 @@ import KnowledgeBase from './pages/KnowledgeBase';
 import HelpDesk from './pages/HelpDesk';
 import Events from './pages/Events';
 import AuditLog from './pages/AuditLog';
+import UserManagement from './pages/UserManagement';
+import Departments from './pages/Departments';
 import Settings from './pages/Settings';
 
 // The chrome shown around every authenticated page.
@@ -81,6 +84,7 @@ export default function App() {
       <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
 
       {/* Protected area — everything below requires a logged-in user */}
       {/* Page access is governed by src/lib/permissions.js (PAGE_ACCESS).
@@ -105,6 +109,8 @@ export default function App() {
         <Route path="/knowledge" element={<RequireAccess pageKey="knowledge"><KnowledgeBase /></RequireAccess>} />
         <Route path="/helpdesk" element={<RequireAccess pageKey="helpdesk"><HelpDesk /></RequireAccess>} />
         <Route path="/events" element={<RequireAccess pageKey="events"><Events /></RequireAccess>} />
+        <Route path="/departments" element={<RequireAccess pageKey="departments"><Departments /></RequireAccess>} />
+        <Route path="/users" element={<RequireAccess pageKey="users"><UserManagement /></RequireAccess>} />
         <Route path="/audit" element={<RequireAccess pageKey="audit"><AuditLog /></RequireAccess>} />
 
         {/* Available to every signed-in user */}

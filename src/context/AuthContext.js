@@ -113,7 +113,16 @@ export function AuthProvider({ children }) {
   // first-login profile bootstrap can run. metadata holds first/last name.
   const signUp = useCallback(
     (email, password, metadata = {}) =>
-      supabase.auth.signUp({ email, password, options: { data: metadata } }),
+      supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: metadata,
+          // Where the email-confirmation link sends the user back to. Uses the
+          // current origin so it works in production and local dev.
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      }),
     []
   );
 

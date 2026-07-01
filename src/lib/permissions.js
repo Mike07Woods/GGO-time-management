@@ -116,6 +116,8 @@ export const PAGE_ACCESS = {
   helpdesk: ['admin', 'owner'],
   events: ['admin', 'owner'],
 
+  departments: ['admin', 'owner'],
+  users: ['owner'],
   audit: ['owner'],
 };
 

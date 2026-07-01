@@ -25,20 +25,30 @@ export default function Directory() {
   const roleOptions = assignableRoles(); // roles THIS actor may assign
 
   const [people, setPeople] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [deptFilter, setDeptFilter] = useState('all');
   const [error, setError] = useState('');
 
   async function loadPeople() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('first_name', { ascending: true });
-    if (error) setError(error.message);
-    setPeople(data || []);
+    const [peopleRes, deptRes] = await Promise.all([
+      supabase.from('profiles').select('*').order('first_name', { ascending: true }),
+      // departments may not exist until the migration is run — fail quietly.
+      supabase.from('departments').select('id, name').order('name', { ascending: true }),
+    ]);
+    if (peopleRes.error) setError(peopleRes.error.message);
+    setPeople(peopleRes.data || []);
+    setDepartments(deptRes.error ? [] : deptRes.data || []);
     setLoading(false);
   }
+
+  const deptName = useMemo(() => {
+    const map = {};
+    departments.forEach((d) => (map[d.id] = d.name));
+    return map;
+  }, [departments]);
 
   useEffect(() => {
     loadPeople();
@@ -82,18 +92,22 @@ export default function Directory() {
     toast.success(person.is_active ? 'User deactivated' : 'User activated');
   }
 
-  // Client-side search filter.
+  // Client-side search + department filter.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return people;
-    return people.filter((p) =>
-      [p.first_name, p.last_name, p.email, p.department, p.position]
+    return people.filter((p) => {
+      if (deptFilter === 'unassigned' && p.department_id) return false;
+      if (deptFilter !== 'all' && deptFilter !== 'unassigned' && p.department_id !== deptFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return [p.first_name, p.last_name, p.email, deptName[p.department_id], p.position]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-        .includes(q)
-    );
-  }, [people, query]);
+        .includes(q);
+    });
+  }, [people, query, deptFilter, deptName]);
 
   return (
     <div>
@@ -102,13 +116,31 @@ export default function Directory() {
           <h1>Employee Directory</h1>
           <p>{people.length} team members</p>
         </div>
-        <input
-          className="input"
-          style={{ maxWidth: 280 }}
-          placeholder="Search name, email, department…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          {departments.length > 0 && (
+            <select
+              className="select"
+              style={{ maxWidth: 200 }}
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+            >
+              <option value="all">All departments</option>
+              <option value="unassigned">Unassigned</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <input
+            className="input"
+            style={{ maxWidth: 280 }}
+            placeholder="Search name, email, department…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
@@ -193,7 +225,13 @@ export default function Directory() {
                         )}
                       </td>
 
-                      <td>{p.department || '—'}</td>
+                      <td>
+                        {deptName[p.department_id] ? (
+                          <span className="badge badge--teal">{deptName[p.department_id]}</span>
+                        ) : (
+                          p.department || '—'
+                        )}
+                      </td>
                       <td>{p.position || '—'}</td>
                       <td>{p.phone || '—'}</td>
 
