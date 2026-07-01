@@ -4,6 +4,7 @@
 // Toasts auto-dismiss after 4s and can be clicked to dismiss early.
 
 import React, { createContext, useCallback, useContext, useState } from 'react';
+import { friendlyError } from '../lib/friendlyError';
 
 const ToastContext = createContext(null);
 
@@ -30,7 +31,9 @@ export function ToastProvider({ children }) {
   // Stable-ish API object; recreated only when push changes (it won't).
   const value = {
     success: (m) => push('success', m),
-    error: (m) => push('error', m),
+    // Error messages are run through friendlyError() so raw Postgres/Supabase
+    // text becomes human-readable everywhere toast.error() is called.
+    error: (m) => push('error', friendlyError(m)),
     info: (m) => push('info', m),
   };
 
