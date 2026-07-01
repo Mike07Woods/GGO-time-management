@@ -33,3 +33,13 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+// Register the service worker so the app is installable (production only —
+// avoids caching headaches during local development).
+if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* registration failures are non-fatal */
+    });
+  });
+}
