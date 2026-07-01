@@ -5,6 +5,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 function compactJson(value) {
   if (value == null) return '—';
@@ -175,7 +176,7 @@ export default function AuditLog() {
       {/* Table */}
       <div className="card">
         {loading ? (
-          <p className="muted">Loading audit log…</p>
+          <SkeletonList />
         ) : filtered.length === 0 ? (
           <div className="empty-state">No matching audit entries.</div>
         ) : (

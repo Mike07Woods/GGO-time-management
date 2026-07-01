@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 // Map a shift status to a badge style.
 const STATUS_BADGE = {
@@ -288,7 +289,7 @@ export default function Scheduling() {
         <div className="card__title">{canManageShift ? 'All shifts' : 'My shifts'}</div>
 
         {loading ? (
-          <p className="muted">Loading shifts…</p>
+          <SkeletonList />
         ) : shifts.length === 0 ? (
           <div className="empty-state">
             {canManageShift ? 'No shifts yet.' : 'You have no shifts assigned yet.'}

@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 const TARGET_OPTIONS = [
   { value: '', label: 'Everyone' },
@@ -207,7 +208,7 @@ export default function Announcements() {
 
       {/* Announcement list */}
       {loading ? (
-        <p className="muted">Loading announcements…</p>
+        <SkeletonList />
       ) : announcements.length === 0 ? (
         <div className="card">
           <div className="empty-state">No announcements yet.</div>

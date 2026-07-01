@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 const COLUMNS = [
   { key: 'pending', label: 'Pending' },
@@ -267,7 +268,7 @@ export default function Tasks() {
 
       {/* Kanban board */}
       {loading ? (
-        <p className="muted">Loading tasks…</p>
+        <SkeletonList />
       ) : (
         <div className="kanban">
           {COLUMNS.map((col) => {

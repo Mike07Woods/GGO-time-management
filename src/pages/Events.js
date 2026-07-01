@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 const RSVP_OPTIONS = [
   { value: 'attending', label: 'Attending', badge: 'badge--green' },
@@ -266,7 +267,7 @@ export default function Events() {
 
       {/* Event list */}
       {loading ? (
-        <p className="muted">Loading events…</p>
+        <SkeletonList />
       ) : visible.length === 0 ? (
         <div className="card">
           <div className="empty-state">No {tab} events.</div>

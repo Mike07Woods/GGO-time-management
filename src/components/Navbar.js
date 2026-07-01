@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { Menu, Settings } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 import logoFullWhite from '../assets/ggo-full-white.png';
@@ -109,6 +109,11 @@ export default function Navbar({ onMenuClick }) {
         {/* Light / dark theme toggle (moon in dark, sun in light) */}
         <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
           {theme === 'dark' ? '🌙' : '☀️'}
+        </button>
+
+        {/* Settings */}
+        <button className="icon-btn" title="Settings" onClick={() => navigate('/settings')}>
+          <Settings size={20} />
         </button>
 
         {/* Notification bell with unread badge */}

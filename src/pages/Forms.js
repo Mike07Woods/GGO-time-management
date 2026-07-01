@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
@@ -313,7 +314,7 @@ export default function Forms() {
 
       {/* Forms list */}
       {loading ? (
-        <p className="muted">Loading forms…</p>
+        <SkeletonList />
       ) : forms.length === 0 ? (
         <div className="card">
           <div className="empty-state">No forms available.</div>

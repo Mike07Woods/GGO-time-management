@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 function startOfWeek(d) {
   const date = new Date(d);
@@ -277,7 +278,7 @@ export default function Overtime() {
         </div>
 
         {loading ? (
-          <p className="muted">Calculating…</p>
+          <SkeletonList />
         ) : rows.length === 0 ? (
           <div className="empty-state">No employees in scope for this week.</div>
         ) : (

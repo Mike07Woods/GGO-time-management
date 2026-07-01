@@ -33,6 +33,7 @@ import KnowledgeBase from './pages/KnowledgeBase';
 import HelpDesk from './pages/HelpDesk';
 import Events from './pages/Events';
 import AuditLog from './pages/AuditLog';
+import Settings from './pages/Settings';
 
 // The chrome shown around every authenticated page.
 // ProtectedRoute guards it; <Outlet /> renders the matched child route.
@@ -105,6 +106,9 @@ export default function App() {
         <Route path="/helpdesk" element={<RequireAccess pageKey="helpdesk"><HelpDesk /></RequireAccess>} />
         <Route path="/events" element={<RequireAccess pageKey="events"><Events /></RequireAccess>} />
         <Route path="/audit" element={<RequireAccess pageKey="audit"><AuditLog /></RequireAccess>} />
+
+        {/* Available to every signed-in user */}
+        <Route path="/settings" element={<Settings />} />
         {/*
           Example of a role-restricted route (left here as documentation):
           <Route

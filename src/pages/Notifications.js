@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 function formatDate(value) {
   if (!value) return '';
@@ -104,7 +105,7 @@ export default function Notifications() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">Loading notifications…</p>
+        <SkeletonList />
       ) : items.length === 0 ? (
         <div className="card">
           <div className="empty-state">You're all caught up — no notifications.</div>

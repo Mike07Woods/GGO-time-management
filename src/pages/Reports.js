@@ -6,6 +6,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 function ymd(d) {
   const x = new Date(d);
@@ -190,7 +191,7 @@ export default function Reports() {
       <div className="card">
         <div className="card__title">Attendance Summary</div>
         {loading ? (
-          <p className="muted">Crunching numbers…</p>
+          <SkeletonList />
         ) : attendance.length === 0 ? (
           <div className="empty-state">No data for this range.</div>
         ) : (

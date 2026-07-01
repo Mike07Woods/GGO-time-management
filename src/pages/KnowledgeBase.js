@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 const EMPTY = { title: '', content: '', category: '', tags: '', is_published: true };
 
@@ -301,7 +302,7 @@ export default function KnowledgeBase() {
       </div>
 
       {loading ? (
-        <p className="muted">Loading articles…</p>
+        <SkeletonList />
       ) : filtered.length === 0 ? (
         <div className="card">
           <div className="empty-state">No articles found.</div>

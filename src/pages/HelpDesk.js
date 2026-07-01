@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { SkeletonList } from '../components/Skeleton';
 
 // Exact priority colours requested in the spec.
 const PRIORITY_COLOR = {
@@ -223,7 +224,7 @@ export default function HelpDesk() {
 
       {/* Ticket list */}
       {loading ? (
-        <p className="muted">Loading tickets…</p>
+        <SkeletonList />
       ) : tickets.length === 0 ? (
         <div className="card">
           <div className="empty-state">No tickets yet.</div>

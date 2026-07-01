@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 import { computeTotalHours } from '../lib/time';
+import { SkeletonList } from '../components/Skeleton';
 
 // Promisified geolocation lookup. Resolves to { lat, lng } or rejects with a message.
 function getPosition() {
@@ -234,7 +235,7 @@ export default function TimeClock() {
           </div>
 
           {loading ? (
-            <p className="muted">Loading…</p>
+            <SkeletonList rows={2} />
           ) : entry ? (
             <>
               <div style={{ textAlign: 'center', padding: '10px 0 18px' }}>
