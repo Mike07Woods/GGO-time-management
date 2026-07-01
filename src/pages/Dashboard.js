@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useRole } from '../hooks/useRole';
 import { supabase } from '../supabaseClient';
 import Skeleton from '../components/Skeleton';
 
@@ -23,12 +24,14 @@ function formatDateTime(value) {
 
 export default function Dashboard() {
   const { user, profile } = useAuth();
+  const { isManager } = useRole();
 
   const [loading, setLoading] = useState(true);
   const [upcomingShifts, setUpcomingShifts] = useState([]);
   const [clockStatus, setClockStatus] = useState('Clocked out');
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [teamStats, setTeamStats] = useState(null); // manager+ only
 
   useEffect(() => {
     if (!user) return;
@@ -103,6 +106,42 @@ export default function Dashboard() {
     };
   }, [user, profile]);
 
+  // Team snapshot — manager/admin/owner only. Uses count-only queries (cheap).
+  useEffect(() => {
+    if (!user || !isManager) return undefined;
+    let active = true;
+
+    async function loadTeam() {
+      const [employeesRes, clockedInRes, approvalsRes, ticketsRes] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase
+          .from('time_entries')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['active', 'on_break']),
+        supabase
+          .from('timesheets')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'submitted'),
+        supabase
+          .from('helpdesk_tickets')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['open', 'in_progress']),
+      ]);
+      if (!active) return;
+      setTeamStats({
+        employees: employeesRes.count || 0,
+        clockedIn: clockedInRes.count || 0,
+        approvals: approvalsRes.count || 0,
+        tickets: ticketsRes.count || 0,
+      });
+    }
+
+    loadTeam();
+    return () => {
+      active = false;
+    };
+  }, [user, isManager]);
+
   const firstName = profile?.first_name || 'there';
 
   return (
@@ -150,6 +189,45 @@ export default function Dashboard() {
           <div className="stat__hint">Unread in-app alerts</div>
         </Link>
       </div>
+
+      {/* Team snapshot — managers, admins and owners only */}
+      {isManager && (
+        <div style={{ marginTop: 26 }}>
+          <div className="stat__label" style={{ marginBottom: 10 }}>
+            Team Snapshot
+          </div>
+          <div className="grid grid--stats">
+            <Link to="/directory" className="stat">
+              <div className="stat__label">Active Employees</div>
+              <div className="stat__value">
+                {teamStats ? teamStats.employees : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
+              </div>
+              <div className="stat__hint">Currently active</div>
+            </Link>
+            <div className="stat">
+              <div className="stat__label">Clocked In Now</div>
+              <div className="stat__value">
+                {teamStats ? teamStats.clockedIn : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
+              </div>
+              <div className="stat__hint">On the clock / on break</div>
+            </div>
+            <Link to="/timesheets" className="stat">
+              <div className="stat__label">Pending Approvals</div>
+              <div className="stat__value">
+                {teamStats ? teamStats.approvals : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
+              </div>
+              <div className="stat__hint">Timesheets to review</div>
+            </Link>
+            <div className="stat">
+              <div className="stat__label">Open Tickets</div>
+              <div className="stat__value">
+                {teamStats ? teamStats.tickets : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
+              </div>
+              <div className="stat__hint">Unresolved help desk</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upcoming shifts list */}
       <div className="card" style={{ marginTop: 22 }}>

@@ -6,6 +6,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 
@@ -17,15 +18,18 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 
 root.render(
   <React.StrictMode>
-    {/* BrowserRouter enables client-side routing (URLs without page reloads). */}
-    <BrowserRouter>
-      {/* AuthProvider exposes the session, user, profile and role to every page. */}
-      <AuthProvider>
-        {/* ToastProvider exposes useToast() for app-wide notifications. */}
-        <ToastProvider>
-          <App />
-        </ToastProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    {/* ErrorBoundary catches render crashes and shows a friendly fallback. */}
+    <ErrorBoundary>
+      {/* BrowserRouter enables client-side routing (URLs without page reloads). */}
+      <BrowserRouter>
+        {/* AuthProvider exposes the session, user, profile and role to every page. */}
+        <AuthProvider>
+          {/* ToastProvider exposes useToast() for app-wide notifications. */}
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 );
