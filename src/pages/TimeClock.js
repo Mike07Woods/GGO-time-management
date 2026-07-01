@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { computeTotalHours } from '../lib/time';
 
 // Promisified geolocation lookup. Resolves to { lat, lng } or rejects with a message.
 function getPosition() {
@@ -168,14 +169,12 @@ export default function TimeClock() {
     }
 
     const clockOutAt = new Date();
-    const clockInAt = new Date(entry.clock_in);
-
-    // Subtract break duration if a complete break was taken.
-    let breakMs = 0;
-    if (entry.break_start && entry.break_end) {
-      breakMs = new Date(entry.break_end) - new Date(entry.break_start);
-    }
-    const totalHours = Math.max(0, (clockOutAt - clockInAt - breakMs) / 3600000);
+    const totalHours = computeTotalHours(
+      entry.clock_in,
+      clockOutAt,
+      entry.break_start,
+      entry.break_end
+    );
 
     const { error } = await supabase
       .from('time_entries')
