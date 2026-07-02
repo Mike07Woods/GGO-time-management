@@ -15,6 +15,7 @@ import { PresenceProvider } from './context/PresenceContext';
 
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Directory from './pages/Directory';
 import Scheduling from './pages/Scheduling';
@@ -89,6 +90,7 @@ export default function App() {
       {/* Public */}
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Protected area — everything below requires a logged-in user */}
       {/* Page access is governed by src/lib/permissions.js (PAGE_ACCESS).

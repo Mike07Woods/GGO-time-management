@@ -128,11 +128,12 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(() => supabase.auth.signOut(), []);
 
-  // Forgot password — sends a reset email back to the app origin.
+  // Forgot password — sends a reset email whose link lands on /reset-password,
+  // where the recovery session lets the user choose a new password.
   const resetPassword = useCallback(
     (email) =>
       supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/login',
+        redirectTo: window.location.origin + '/reset-password',
       }),
     []
   );

@@ -91,9 +91,11 @@ drop policy if exists pings_select on public.status_pings;
 create policy pings_select on public.status_pings for select to authenticated
   using (to_user_id = auth.uid() or from_user_id = auth.uid());
 
+-- Only managers/admins/owners may send pings (matches the UI). Enforced here so
+-- the API can't be used to bypass the button and spam notifications.
 drop policy if exists pings_insert on public.status_pings;
 create policy pings_insert on public.status_pings for insert to authenticated
-  with check (from_user_id = auth.uid());
+  with check (from_user_id = auth.uid() and public.is_manager());
 
 drop policy if exists settings_manage on public.status_settings;
 create policy settings_manage on public.status_settings for all to authenticated
