@@ -8,12 +8,11 @@ import React from 'react';
 import { usePresence } from '../context/PresenceContext';
 
 export default function PresenceDot({ userId, size = 11 }) {
-  const { enabled, allPresence, statusById } = usePresence();
+  const { enabled, getStatus } = usePresence();
   if (!enabled || !userId) return null;
 
-  const pres = allPresence[userId];
-  const status = pres ? statusById(pres.status_type_id) : null;
-  const color = status?.color || '#6B7280'; // no presence row => Offline gray
+  const status = getStatus(userId); // stale-aware: old activity shows Offline
+  const color = status?.color || '#6B7280';
 
   return (
     <span

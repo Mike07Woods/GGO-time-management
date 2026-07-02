@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { canAccessPage } from '../lib/permissions';
+import PresenceDot from './PresenceDot';
 import logoIconWhite from '../assets/ggo-icon-white.png';
 import logoFullWhite from '../assets/ggo-full-white.png';
 
@@ -274,8 +275,9 @@ export default function Sidebar({ mobileOpen = false, onClose }) {
 
       {/* Bottom: user + logout */}
       <div className="gsb__user">
-        <div className="avatar" style={{ width: 34, height: 34, fontSize: 13 }} aria-hidden="true">
+        <div className="avatar" style={{ width: 34, height: 34, fontSize: 13, position: 'relative' }} aria-hidden="true">
           {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : initials(profile, user?.email)}
+          <PresenceDot userId={user?.id} size={9} />
         </div>
         {!collapsed && (
           <div className="gsb__usermeta">

@@ -55,6 +55,29 @@ export function PresenceProvider({ children }) {
     [statusTypes]
   );
 
+  // How long after last activity a status is treated as stale -> shown Offline.
+  // (Covers laptops closed without a clean tab-close event.)
+  const staleMinutes = Math.max(30, (settings.afk_timeout_minutes || 15) * 2);
+
+  const OFFLINE_FALLBACK = { name: 'Offline', color: '#6B7280', emoji: '⚫' };
+
+  // Effective status for a user: the stored status, but downgraded to Offline if
+  // no row exists or their last activity is older than the stale threshold.
+  const getStatus = useCallback(
+    (userId) => {
+      const offline = statusTypes.find((t) => t.name === 'Offline') || OFFLINE_FALLBACK;
+      const pres = allPresence[userId];
+      if (!pres) return offline;
+      const st = statusById(pres.status_type_id) || offline;
+      if (st.name === 'Offline') return offline;
+      const lastMs = new Date(pres.last_active_at || pres.updated_at || 0).getTime();
+      if (Date.now() - lastMs > staleMinutes * 60000) return offline;
+      return st;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allPresence, statusTypes, statusById, staleMinutes]
+  );
+
   const fetchAllPresence = useCallback(async () => {
     const { data, error } = await supabase.from('user_presence').select('*');
     if (error) return;
@@ -74,6 +97,15 @@ export function PresenceProvider({ children }) {
       await supabase.from('user_presence').upsert(payload, { onConflict: 'user_id' });
     },
     [user]
+  );
+
+  // Convenience: set my status by its display name (used by the time clock).
+  const setMyStatusByName = useCallback(
+    async (name, note) => {
+      const st = statusTypes.find((t) => t.name === name);
+      if (st) await setMyStatus(st.id, note);
+    },
+    [statusTypes, setMyStatus]
   );
 
   const refreshSettings = useCallback(async () => {
@@ -188,7 +220,10 @@ export function PresenceProvider({ children }) {
     allPresence,
     settings,
     statusById,
+    getStatus,
+    staleMinutes,
     setMyStatus,
+    setMyStatusByName,
     refreshSettings,
     reloadStatusTypes: async () => {
       const { data } = await supabase.from('status_types').select('*').order('sort_order', { ascending: true });
@@ -210,7 +245,10 @@ export function usePresence() {
       allPresence: {},
       settings: { afk_timeout_minutes: 15, ping_cooldown_minutes: 5, allow_custom_notes: true },
       statusById: () => null,
+      getStatus: () => ({ name: 'Offline', color: '#6B7280', emoji: '⚫' }),
+      staleMinutes: 30,
       setMyStatus: async () => {},
+      setMyStatusByName: async () => {},
       refreshSettings: async () => {},
       reloadStatusTypes: async () => {},
       myPresence: null,

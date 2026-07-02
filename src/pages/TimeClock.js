@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
+import { usePresence } from '../context/PresenceContext';
 import { supabase } from '../supabaseClient';
 import { computeTotalHours } from '../lib/time';
 import { SkeletonList } from '../components/Skeleton';
@@ -45,6 +46,8 @@ function formatCoords(lat, lng) {
 export default function TimeClock() {
   const { user } = useAuth();
   const toast = useToast();
+  // Presence follows the shift: clock-in -> Active, break -> On Break, out -> Offline.
+  const { setMyStatusByName } = usePresence();
 
   const [entry, setEntry] = useState(null); // current open entry (active/on_break)
   const [history, setHistory] = useState([]); // recent completed entries
@@ -119,6 +122,7 @@ export default function TimeClock() {
       return;
     }
     setEntry(data);
+    setMyStatusByName('Active');
     toast.success('Clocked in');
   }
 
@@ -137,6 +141,7 @@ export default function TimeClock() {
       return;
     }
     setEntry(data);
+    setMyStatusByName('On Break');
     toast.info('Break started');
   }
 
@@ -155,6 +160,7 @@ export default function TimeClock() {
       return;
     }
     setEntry(data);
+    setMyStatusByName('Active');
     toast.success('Break ended');
   }
 
@@ -194,6 +200,7 @@ export default function TimeClock() {
       return;
     }
     setEntry(null);
+    setMyStatusByName('Offline');
     loadState();
     toast.success(`Clocked out — ${totalHours.toFixed(2)} h logged`);
   }

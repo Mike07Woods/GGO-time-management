@@ -141,6 +141,40 @@ begin
   end if;
 end $$;
 
+-- ----------------------------------------------------------------------------
+-- Presence history (for analytics). One row per status change; duration of a
+-- row = time until the next row (or now). Managers+ can read it.
+-- ----------------------------------------------------------------------------
+create table if not exists public.presence_log (
+  id             uuid default gen_random_uuid() primary key,
+  user_id        uuid references public.profiles (id) on delete cascade,
+  status_type_id uuid references public.status_types (id),
+  started_at     timestamptz default now()
+);
+
+create index if not exists idx_presence_log_user_time on public.presence_log (user_id, started_at);
+
+alter table public.presence_log enable row level security;
+
+drop policy if exists presence_log_select on public.presence_log;
+create policy presence_log_select on public.presence_log for select to authenticated
+  using (public.is_manager());
+
+create or replace function public.fn_log_presence()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (tg_op = 'INSERT') or (new.status_type_id is distinct from old.status_type_id) then
+    insert into public.presence_log (user_id, status_type_id, started_at)
+    values (new.user_id, new.status_type_id, now());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_presence_change on public.user_presence;
+create trigger on_presence_change after insert or update on public.user_presence
+  for each row execute function public.fn_log_presence();
+
 -- ============================================================================
 -- DONE. The Team Status page + presence indicators will now work.
 -- ============================================================================

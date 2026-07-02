@@ -15,7 +15,9 @@ import { usePresence } from '../context/PresenceContext';
 import { supabase } from '../supabaseClient';
 import Skeleton from '../components/Skeleton';
 
-const OFFLINE = { name: 'Offline', color: '#6B7280', emoji: '⚫' };
+// Grid ordering: online statuses first, Offline last.
+const STATUS_RANK = { Active: 0, 'On Break': 1, 'In Meeting': 1, 'On Call': 1, AFK: 3, Offline: 4 };
+const rankOf = (name) => (STATUS_RANK[name] != null ? STATUS_RANK[name] : 2);
 
 // Human "x mins ago" from a timestamp.
 function timeAgo(ts) {
@@ -32,6 +34,17 @@ function timeAgo(ts) {
 function fullName(p) {
   return [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email || '—';
 }
+
+function ymd(d) {
+  const x = new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(
+    x.getDate()
+  ).padStart(2, '0')}`;
+}
+function hoursFmt(mins) {
+  if (!mins) return '—';
+  return `${(mins / 60).toFixed(1)}h`;
+}
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
   return s || (p.email?.[0]?.toUpperCase() ?? '?');
@@ -41,7 +54,7 @@ export default function TeamStatus() {
   const { user, profile } = useAuth();
   const { isManager, isAdmin } = useRole();
   const toast = useToast();
-  const { enabled, allPresence, statusById, settings } = usePresence();
+  const { enabled, allPresence, getStatus, statusById, settings } = usePresence();
 
   const canPing = isManager; // manager/admin/owner
   const adminView = isAdmin; // admins/owners may change the department filter
@@ -99,14 +112,16 @@ export default function TeamStatus() {
     return map;
   }, [departments]);
 
-  // Resolve the live status object for a person (defaults to Offline).
-  const statusOf = useCallback(
-    (p) => {
-      const pres = allPresence[p.id];
-      return (pres && statusById(pres.status_type_id)) || OFFLINE;
-    },
-    [allPresence, statusById]
-  );
+  // Re-render every 30s so stale statuses + "last active" stay current without
+  // waiting on a Realtime event.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Resolve the live (stale-aware) status object for a person.
+  const statusOf = useCallback((p) => getStatus(p.id), [getStatus]);
 
   // Department-scoped list (respects manager lock + admin filter).
   const deptScoped = useMemo(() => {
@@ -128,11 +143,19 @@ export default function TeamStatus() {
     return s;
   }, [deptScoped, statusOf]);
 
-  // Apply the status filter for the grid.
+  // Apply the status filter, then sort Online -> Offline (ties by name).
   const visible = useMemo(() => {
-    if (statusFilter === 'all') return deptScoped;
     const target = statusFilter === 'break' ? 'On Break' : statusFilter;
-    return deptScoped.filter((p) => statusOf(p).name.toLowerCase() === target.toLowerCase());
+    const list =
+      statusFilter === 'all'
+        ? [...deptScoped]
+        : deptScoped.filter((p) => statusOf(p).name.toLowerCase() === target.toLowerCase());
+    return list.sort((a, b) => {
+      const ra = rankOf(statusOf(a).name);
+      const rb = rankOf(statusOf(b).name);
+      if (ra !== rb) return ra - rb;
+      return fullName(a).localeCompare(fullName(b));
+    });
   }, [deptScoped, statusFilter, statusOf]);
 
   function openPing(person) {
@@ -158,6 +181,65 @@ export default function TeamStatus() {
     setPingTarget(null);
     setPingMsg('');
   }
+
+  // --- Presence analytics (from presence_log) ---
+  const [anaDate, setAnaDate] = useState(ymd(new Date()));
+  const [logRows, setLogRows] = useState([]);
+  const [anaLoading, setAnaLoading] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let cancelled = false;
+    (async () => {
+      setAnaLoading(true);
+      const dayStart = new Date(`${anaDate}T00:00:00`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const { data } = await supabase
+        .from('presence_log')
+        .select('user_id, status_type_id, started_at')
+        .gte('started_at', dayStart.toISOString())
+        .lt('started_at', dayEnd.toISOString())
+        .order('started_at', { ascending: true });
+      if (!cancelled) {
+        setLogRows(data || []);
+        setAnaLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, anaDate]);
+
+  // Minutes spent per status per person for the chosen day (durations between
+  // consecutive log entries, clamped to the day and to "now").
+  const analytics = useMemo(() => {
+    const dayStart = new Date(`${anaDate}T00:00:00`).getTime();
+    const dayEnd = Math.min(dayStart + 24 * 3600 * 1000, Date.now());
+    const byUser = {};
+    logRows.forEach((r) => {
+      (byUser[r.user_id] = byUser[r.user_id] || []).push(r);
+    });
+    return deptScoped
+      .map((p) => {
+        const rows = byUser[p.id] || [];
+        const mins = {};
+        for (let i = 0; i < rows.length; i++) {
+          const segStart = new Date(rows[i].started_at).getTime();
+          const segEnd = i + 1 < rows.length ? new Date(rows[i + 1].started_at).getTime() : dayEnd;
+          const s = Math.max(segStart, dayStart);
+          const e = Math.min(segEnd, dayEnd);
+          if (e > s) {
+            const name = statusById(rows[i].status_type_id)?.name || 'Unknown';
+            mins[name] = (mins[name] || 0) + (e - s) / 60000;
+          }
+        }
+        const active = mins.Active || 0;
+        return { id: p.id, name: fullName(p), mins, active };
+      })
+      .filter((r) => Object.keys(r.mins).length > 0)
+      .sort((a, b) => b.active - a.active);
+  }, [logRows, deptScoped, statusById, anaDate]);
 
   const summaryCards = [
     { key: 'online', label: 'Total Online', color: '#00D15E', value: summary.online },
@@ -340,6 +422,60 @@ export default function TeamStatus() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Presence analytics — time in each status for a chosen day */}
+      {enabled && (
+        <div className="card" style={{ marginTop: 18 }}>
+          <div
+            className="row"
+            style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}
+          >
+            <div className="card__title" style={{ margin: 0 }}>
+              Presence Analytics
+            </div>
+            <input
+              type="date"
+              className="input"
+              style={{ maxWidth: 170 }}
+              max={ymd(new Date())}
+              value={anaDate}
+              onChange={(e) => setAnaDate(e.target.value)}
+            />
+          </div>
+          <div className="dim" style={{ fontSize: 12, margin: '4px 0 12px' }}>
+            Hours spent in each status on the selected day.
+          </div>
+
+          {anaLoading ? (
+            <Skeleton width="100%" height={80} />
+          ) : analytics.length === 0 ? (
+            <div className="empty-state">No presence recorded for this day yet.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>🟢 Active</th>
+                    <th>🟡 On Break</th>
+                    <th>🔴 AFK</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analytics.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ fontWeight: 600 }}>{r.name}</td>
+                      <td>{hoursFmt(r.mins.Active)}</td>
+                      <td>{hoursFmt(r.mins['On Break'])}</td>
+                      <td>{hoursFmt(r.mins.AFK)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
