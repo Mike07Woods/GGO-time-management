@@ -9,6 +9,7 @@ import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 import Skeleton from '../components/Skeleton';
+import PresenceDot from '../components/PresenceDot';
 
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
@@ -190,8 +191,9 @@ export default function Directory() {
                     <tr key={p.id}>
                       <td>
                         <div className="row">
-                          <div className="avatar">
+                          <div className="avatar" style={{ position: 'relative' }}>
                             {p.avatar_url ? <img src={p.avatar_url} alt="" /> : initials(p)}
+                            <PresenceDot userId={p.id} />
                           </div>
                           <div>
                             <div style={{ fontWeight: 600 }}>

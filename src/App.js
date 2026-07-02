@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import ChatPopup from './components/ChatPopup';
 import LoadingScreen from './components/LoadingScreen';
+import { PresenceProvider } from './context/PresenceContext';
 
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
@@ -36,6 +37,7 @@ import Events from './pages/Events';
 import AuditLog from './pages/AuditLog';
 import UserManagement from './pages/UserManagement';
 import Departments from './pages/Departments';
+import TeamStatus from './pages/TeamStatus';
 import Settings from './pages/Settings';
 
 // The chrome shown around every authenticated page.
@@ -43,7 +45,9 @@ import Settings from './pages/Settings';
 function ProtectedLayout() {
   return (
     <ProtectedRoute>
-      <ShellWithSidebar />
+      <PresenceProvider>
+        <ShellWithSidebar />
+      </PresenceProvider>
     </ProtectedRoute>
   );
 }
@@ -106,6 +110,7 @@ export default function App() {
 
         {/* --- Phase 3 routes --- */}
         <Route path="/chat" element={<Chat />} />
+        <Route path="/team-status" element={<RequireAccess pageKey="team_status"><TeamStatus /></RequireAccess>} />
         <Route path="/knowledge" element={<RequireAccess pageKey="knowledge"><KnowledgeBase /></RequireAccess>} />
         <Route path="/helpdesk" element={<RequireAccess pageKey="helpdesk"><HelpDesk /></RequireAccess>} />
         <Route path="/events" element={<RequireAccess pageKey="events"><Events /></RequireAccess>} />

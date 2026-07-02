@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Menu, Settings, Sun, Moon, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
+import MyStatusMenu from './MyStatusMenu';
 import logoIconWhite from '../assets/ggo-icon-white.png';
 import logoIconBlack from '../assets/ggo-icon-black.png';
 
@@ -120,6 +121,9 @@ export default function Navbar({ onMenuClick }) {
           <Bell size={20} />
           {unread > 0 && <span className="badge-count">{unread > 99 ? '99+' : unread}</span>}
         </button>
+
+        {/* Self-serve presence status (colored dot + dropdown) */}
+        <MyStatusMenu />
 
         {/* Current user */}
         <div className="navbar__user">

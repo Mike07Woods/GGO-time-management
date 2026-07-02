@@ -24,6 +24,7 @@ import {
   ScrollText,
   Building2,
   UserCog,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
@@ -55,6 +56,7 @@ const GROUPS = [
       { to: '/announcements', key: 'announcements', label: 'Announcements', icon: Megaphone },
       { to: '/notifications', key: 'notifications', label: 'Notifications', icon: Bell },
       { to: '/chat', key: 'chat', label: 'Chat', icon: MessageSquare },
+      { to: '/team-status', key: 'team_status', label: 'Team Status', icon: Activity },
     ],
   },
   {

@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
+import PresenceDot from '../components/PresenceDot';
 
 // UI labels map "employee" -> the DB's 'user' role.
 const ROLE_OPTIONS = [
@@ -160,8 +161,9 @@ export default function UserManagement() {
                   return (
                     <tr key={p.id}>
                       <td>
-                        <div className="avatar" style={{ width: 34, height: 34, fontSize: 13 }}>
-                          {initials(p)}
+                        <div className="avatar" style={{ width: 34, height: 34, fontSize: 13, position: 'relative' }}>
+                          {p.avatar_url ? <img src={p.avatar_url} alt="" /> : initials(p)}
+                          <PresenceDot userId={p.id} size={9} />
                         </div>
                       </td>
                       <td>

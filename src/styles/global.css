@@ -1045,6 +1045,12 @@ body.light-mode .skeleton::after {
   color: #2bd47e;
 }
 
+.alert--info {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #7ab0f5;
+}
+
 .empty-state {
   text-align: center;
   padding: 40px 20px;

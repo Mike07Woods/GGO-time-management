@@ -132,8 +132,8 @@ describe('canAccessPage', () => {
     }
   });
 
-  test('employees cannot reach directory / scheduling / timesheets / reports', () => {
-    for (const key of ['directory', 'scheduling', 'timesheets', 'reports']) {
+  test('employees cannot reach manager+ pages', () => {
+    for (const key of ['directory', 'scheduling', 'timesheets', 'reports', 'team_status']) {
       expect(canAccessPage('user', key)).toBe(false);
       expect(canAccessPage('manager', key)).toBe(true);
       expect(canAccessPage('admin', key)).toBe(true);

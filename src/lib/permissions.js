@@ -110,6 +110,7 @@ export const PAGE_ACCESS = {
   scheduling: ['manager', 'admin', 'owner'],
   timesheets: ['manager', 'admin', 'owner'],
   reports: ['manager', 'admin', 'owner'],
+  team_status: ['manager', 'admin', 'owner'],
 
   overtime: ['admin', 'owner'],
   knowledge: ['admin', 'owner'],

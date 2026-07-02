@@ -6,6 +6,7 @@ import React, { useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import StatusSettings from '../components/StatusSettings';
 
 export default function Settings() {
   const { user, profile, refreshProfile } = useAuth();
@@ -288,6 +289,9 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Live-status configuration (owner/admin only; self-gates) */}
+      <StatusSettings />
     </div>
   );
 }
