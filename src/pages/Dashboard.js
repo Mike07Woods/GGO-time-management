@@ -1,25 +1,73 @@
 // src/pages/Dashboard.js
-// Landing page after login. Shows a greeting and a few live stat tiles plus the
-// user's upcoming shifts. All data is scoped to the current user.
+// Landing page after login. A greeting line, icon-led stat cards (personal +,
+// for managers, a team row) and the user's upcoming shifts as a compact table.
 
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  CalendarClock,
+  Clock,
+  Megaphone,
+  Bell,
+  Users,
+  UserCheck,
+  ClipboardCheck,
+  LifeBuoy,
+  CalendarX,
+} from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { supabase } from '../supabaseClient';
 import Skeleton from '../components/Skeleton';
 
-// Format a timestamp like "Mon, Jun 23 · 9:00 AM".
-function formatDateTime(value) {
-  if (!value) return '—';
-  const d = new Date(value);
-  return d.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+const TONES = {
+  blue: { bg: 'var(--accent-light)', fg: 'var(--accent-text)' },
+  green: { bg: 'var(--green-light)', fg: 'var(--green)' },
+  amber: { bg: 'var(--amber-light)', fg: 'var(--amber)' },
+  purple: { bg: 'var(--purple-light)', fg: 'var(--purple)' },
+  red: { bg: 'var(--red-light)', fg: 'var(--red)' },
+};
+
+// One icon-left stat card. Renders as a link when `to` is given.
+function StatCard({ to, icon: Icon, tone, value, label, sub, loading, valueSize }) {
+  const t = TONES[tone] || TONES.blue;
+  const inner = (
+    <>
+      <div className="stat-card__icon" style={{ background: t.bg, color: t.fg }}>
+        <Icon size={20} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div className="stat-card__value" style={valueSize ? { fontSize: valueSize } : undefined}>
+          {loading ? <Skeleton width={44} height={22} /> : value}
+        </div>
+        <div className="stat-card__label">{label}</div>
+        {sub && <div className="stat-card__sub">{sub}</div>}
+      </div>
+    </>
+  );
+  return to ? (
+    <Link to={to} className="stat-card">
+      {inner}
+    </Link>
+  ) : (
+    <div className="stat-card">{inner}</div>
+  );
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function shiftDate(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function shiftTime(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 export default function Dashboard() {
@@ -34,14 +82,12 @@ export default function Dashboard() {
   const [teamStats, setTeamStats] = useState(null); // manager+ only
 
   useEffect(() => {
-    if (!user) return;
-
+    if (!user) return undefined;
     let active = true;
 
     async function load() {
       const nowIso = new Date().toISOString();
 
-      // Upcoming published shifts assigned to me.
       const shiftsReq = supabase
         .from('shifts')
         .select('*')
@@ -51,7 +97,6 @@ export default function Dashboard() {
         .order('start_time', { ascending: true })
         .limit(5);
 
-      // My current open time entry (if any).
       const timeReq = supabase
         .from('time_entries')
         .select('status')
@@ -61,16 +106,13 @@ export default function Dashboard() {
         .limit(1)
         .maybeSingle();
 
-      // All announcements visible to me (everyone-targeted or my role).
       const annReq = supabase
         .from('announcements')
         .select('id')
         .or(`target_role.is.null,target_role.eq.${profile?.role || 'user'}`);
 
-      // Which announcements I've already read.
       const readsReq = supabase.from('announcement_reads').select('announcement_id').eq('user_id', user.id);
 
-      // Unread in-app notifications.
       const notifReq = supabase
         .from('notifications')
         .select('id', { count: 'exact', head: true })
@@ -88,14 +130,11 @@ export default function Dashboard() {
       if (!active) return;
 
       setUpcomingShifts(shiftsRes.data || []);
-
       const status = timeRes.data?.status;
       setClockStatus(status === 'active' ? 'Clocked in' : status === 'on_break' ? 'On break' : 'Clocked out');
 
       const readIds = new Set((readsRes.data || []).map((r) => r.announcement_id));
-      const unreadAnn = (annRes.data || []).filter((a) => !readIds.has(a.id)).length;
-      setUnreadAnnouncements(unreadAnn);
-
+      setUnreadAnnouncements((annRes.data || []).filter((a) => !readIds.has(a.id)).length);
       setUnreadNotifications(notifRes.count || 0);
       setLoading(false);
     }
@@ -106,7 +145,7 @@ export default function Dashboard() {
     };
   }, [user, profile]);
 
-  // Team snapshot — manager/admin/owner only. Uses count-only queries (cheap).
+  // Team snapshot — manager/admin/owner only (cheap count-only queries).
   useEffect(() => {
     if (!user || !isManager) return undefined;
     let active = true;
@@ -114,18 +153,9 @@ export default function Dashboard() {
     async function loadTeam() {
       const [employeesRes, clockedInRes, approvalsRes, ticketsRes] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
-        supabase
-          .from('time_entries')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['active', 'on_break']),
-        supabase
-          .from('timesheets')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'submitted'),
-        supabase
-          .from('helpdesk_tickets')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['open', 'in_progress']),
+        supabase.from('time_entries').select('id', { count: 'exact', head: true }).in('status', ['active', 'on_break']),
+        supabase.from('timesheets').select('id', { count: 'exact', head: true }).eq('status', 'submitted'),
+        supabase.from('helpdesk_tickets').select('id', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
       ]);
       if (!active) return;
       setTeamStats({
@@ -143,94 +173,110 @@ export default function Dashboard() {
   }, [user, isManager]);
 
   const firstName = profile?.first_name || 'there';
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 
   return (
     <div>
-      <div className="dashboard-hero">
-        <div className="page-header" style={{ margin: 0 }}>
-          <div>
-            <h1>Welcome back, {firstName} 👋</h1>
-            <p>Here's a quick look at your day.</p>
-          </div>
+      <style>{`.dash-shifts .table td { height: 44px; }`}</style>
+
+      {/* Greeting */}
+      <div
+        className="row"
+        style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>
+          {greeting()}, {firstName} 👋
         </div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{today}</div>
       </div>
 
-      {/* Stat tiles */}
+      {/* Personal stats */}
       <div className="grid grid--stats">
-        <Link to="/scheduling" className="stat">
-          <div className="stat__label">Upcoming Shifts</div>
-          <div className="stat__value">
-            {loading ? <Skeleton width={56} height={30} style={{ marginTop: 6 }} /> : upcomingShifts.length}
-          </div>
-          <div className="stat__hint">Published &amp; assigned to you</div>
-        </Link>
-
-        <Link to="/timeclock" className="stat">
-          <div className="stat__label">Time Clock</div>
-          <div className="stat__value" style={{ fontSize: 22, marginTop: 12 }}>
-            {loading ? <Skeleton width={110} height={22} /> : clockStatus}
-          </div>
-          <div className="stat__hint">Tap to clock in / out</div>
-        </Link>
-
-        <Link to="/announcements" className="stat">
-          <div className="stat__label">Unread Announcements</div>
-          <div className="stat__value">
-            {loading ? <Skeleton width={56} height={30} style={{ marginTop: 6 }} /> : unreadAnnouncements}
-          </div>
-          <div className="stat__hint">Tap to read &amp; acknowledge</div>
-        </Link>
-
-        <Link to="/notifications" className="stat">
-          <div className="stat__label">Notifications</div>
-          <div className="stat__value">
-            {loading ? <Skeleton width={56} height={30} style={{ marginTop: 6 }} /> : unreadNotifications}
-          </div>
-          <div className="stat__hint">Unread in-app alerts</div>
-        </Link>
+        <StatCard
+          to="/scheduling"
+          icon={CalendarClock}
+          tone="blue"
+          loading={loading}
+          value={upcomingShifts.length}
+          label="Upcoming Shifts"
+          sub="Published & assigned to you"
+        />
+        <StatCard
+          to="/timeclock"
+          icon={Clock}
+          tone="green"
+          loading={loading}
+          value={clockStatus}
+          valueSize={16}
+          label="Time Clock"
+          sub="Tap to clock in / out"
+        />
+        <StatCard
+          to="/announcements"
+          icon={Megaphone}
+          tone="amber"
+          loading={loading}
+          value={unreadAnnouncements}
+          label="Announcements"
+          sub="Unread & to acknowledge"
+        />
+        <StatCard
+          to="/notifications"
+          icon={Bell}
+          tone="purple"
+          loading={loading}
+          value={unreadNotifications}
+          label="Notifications"
+          sub="Unread in-app alerts"
+        />
       </div>
 
-      {/* Team snapshot — managers, admins and owners only */}
+      {/* Team stats — managers, admins and owners only */}
       {isManager && (
-        <div style={{ marginTop: 26 }}>
-          <div className="stat__label" style={{ marginBottom: 10 }}>
-            Team Snapshot
-          </div>
-          <div className="grid grid--stats">
-            <Link to="/directory" className="stat">
-              <div className="stat__label">Active Employees</div>
-              <div className="stat__value">
-                {teamStats ? teamStats.employees : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
-              </div>
-              <div className="stat__hint">Currently active</div>
-            </Link>
-            <div className="stat">
-              <div className="stat__label">Clocked In Now</div>
-              <div className="stat__value">
-                {teamStats ? teamStats.clockedIn : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
-              </div>
-              <div className="stat__hint">On the clock / on break</div>
-            </div>
-            <Link to="/timesheets" className="stat">
-              <div className="stat__label">Pending Approvals</div>
-              <div className="stat__value">
-                {teamStats ? teamStats.approvals : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
-              </div>
-              <div className="stat__hint">Timesheets to review</div>
-            </Link>
-            <div className="stat">
-              <div className="stat__label">Open Tickets</div>
-              <div className="stat__value">
-                {teamStats ? teamStats.tickets : <Skeleton width={56} height={30} style={{ marginTop: 6 }} />}
-              </div>
-              <div className="stat__hint">Unresolved help desk</div>
-            </div>
-          </div>
+        <div className="grid grid--stats" style={{ marginTop: 16 }}>
+          <StatCard
+            to="/directory"
+            icon={Users}
+            tone="blue"
+            loading={!teamStats}
+            value={teamStats?.employees}
+            label="Active Employees"
+            sub="Currently active"
+          />
+          <StatCard
+            icon={UserCheck}
+            tone="green"
+            loading={!teamStats}
+            value={teamStats?.clockedIn}
+            label="Clocked In Now"
+            sub="On the clock / on break"
+          />
+          <StatCard
+            to="/timesheets"
+            icon={ClipboardCheck}
+            tone="amber"
+            loading={!teamStats}
+            value={teamStats?.approvals}
+            label="Pending Approvals"
+            sub="Timesheets to review"
+          />
+          <StatCard
+            icon={LifeBuoy}
+            tone="red"
+            loading={!teamStats}
+            value={teamStats?.tickets}
+            label="Open Tickets"
+            sub="Unresolved help desk"
+          />
         </div>
       )}
 
-      {/* Upcoming shifts list */}
-      <div className="card" style={{ marginTop: 22 }}>
+      {/* Upcoming shifts */}
+      <div className="card dash-shifts" style={{ marginTop: 20 }}>
         <div className="card__title">
           Your Upcoming Shifts
           <Link to="/scheduling" className="btn btn--ghost btn--sm">
@@ -246,25 +292,38 @@ export default function Dashboard() {
                   <Skeleton width="40%" height={14} style={{ marginBottom: 8 }} />
                   <Skeleton width="60%" height={12} />
                 </div>
-                <Skeleton width={90} height={22} radius={999} />
               </div>
             ))}
           </div>
         ) : upcomingShifts.length === 0 ? (
-          <div className="empty-state">No upcoming shifts assigned to you yet.</div>
+          <div style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--text-muted)' }}>
+            <CalendarX size={26} style={{ marginBottom: 8, opacity: 0.7 }} />
+            <div style={{ fontSize: 14 }}>No upcoming shifts</div>
+          </div>
         ) : (
-          <div className="stack">
-            {upcomingShifts.map((shift) => (
-              <div key={shift.id} className="row row--between" style={{ padding: '6px 0' }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{shift.title || 'Shift'}</div>
-                  <div className="dim" style={{ fontSize: 13 }}>
-                    {formatDateTime(shift.start_time)} → {formatDateTime(shift.end_time)}
-                  </div>
-                </div>
-                <span className="badge badge--gray">{shift.location || 'No location'}</span>
-              </div>
-            ))}
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Shift</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {upcomingShifts.map((shift) => (
+                  <tr key={shift.id}>
+                    <td style={{ fontWeight: 600 }}>{shift.title || 'Shift'}</td>
+                    <td>{shiftDate(shift.start_time)}</td>
+                    <td>
+                      {shiftTime(shift.start_time)} – {shiftTime(shift.end_time)}
+                    </td>
+                    <td>{shift.location || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
