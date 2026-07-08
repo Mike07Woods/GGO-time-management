@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
+import { Megaphone } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
 
@@ -151,7 +152,7 @@ export default function Announcements() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Announcements</h1>
+          <h1><Megaphone size={20} /> Announcements</h1>
           <p>{unreadCount} unread</p>
         </div>
       </div>

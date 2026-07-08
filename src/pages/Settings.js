@@ -5,6 +5,7 @@
 import React, { useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
+import { Cog } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import StatusSettings from '../components/StatusSettings';
 
@@ -145,7 +146,7 @@ export default function Settings() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Settings</h1>
+          <h1><Cog size={20} /> Settings</h1>
           <p>Manage your profile, password and preferences.</p>
         </div>
       </div>

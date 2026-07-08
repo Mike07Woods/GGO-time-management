@@ -5,6 +5,7 @@
 // page also reads role-scoped data so non-admins would simply see nothing.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
 
@@ -137,7 +138,7 @@ export default function Reports() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Reports &amp; Analytics</h1>
+          <h1><BarChart2 size={20} /> Reports &amp; Analytics</h1>
           <p>Team summaries for the selected date range.</p>
         </div>
         <button className="btn btn--ghost" onClick={exportAttendance} disabled={attendance.length === 0}>

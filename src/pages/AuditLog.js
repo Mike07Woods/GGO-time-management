@@ -4,6 +4,7 @@
 // database triggers, so this page only reads, filters and exports them.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollText } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
 
@@ -119,7 +120,7 @@ export default function AuditLog() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Audit Log</h1>
+          <h1><ScrollText size={20} /> Audit Log</h1>
           <p>{filtered.length} of {logs.length} entries</p>
         </div>
         <button className="btn btn--ghost" onClick={exportCsv} disabled={filtered.length === 0}>

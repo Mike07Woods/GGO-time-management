@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { MessageSquare } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 function initials(name) {
@@ -251,7 +252,7 @@ export default function Chat() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Team Chat {totalUnread > 0 && <span className="badge badge--red">{totalUnread}</span>}</h1>
+          <h1><MessageSquare size={20} /> Team Chat {totalUnread > 0 && <span className="badge badge--red">{totalUnread}</span>}</h1>
           <p>Direct messages and group channels.</p>
         </div>
         {isManager && (

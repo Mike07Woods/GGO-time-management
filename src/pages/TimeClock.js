@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { usePresence } from '../context/PresenceContext';
+import { Clock } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { computeTotalHours } from '../lib/time';
 import { SkeletonList } from '../components/Skeleton';
@@ -222,7 +223,7 @@ export default function TimeClock() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Time Clock</h1>
+          <h1><Clock size={20} /> Time Clock</h1>
           <p>Clock in and out — your location is stamped automatically.</p>
         </div>
       </div>

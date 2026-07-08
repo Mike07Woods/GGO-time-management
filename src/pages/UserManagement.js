@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
+import { UserCog } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
 import PresenceDot from '../components/PresenceDot';
@@ -122,7 +123,7 @@ export default function UserManagement() {
     <div>
       <div className="page-header">
         <div>
-          <h1>User Management</h1>
+          <h1><UserCog size={20} /> User Management</h1>
           <p>Manage roles, departments, and team assignments</p>
         </div>
         <input

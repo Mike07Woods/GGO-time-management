@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
+import { Timer } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
 
@@ -210,7 +211,7 @@ export default function Timesheets() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Timesheets</h1>
+          <h1><Timer size={20} /> Timesheets</h1>
           <p>Weekly hours generated from your time clock entries.</p>
         </div>
       </div>

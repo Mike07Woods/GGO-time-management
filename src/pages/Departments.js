@@ -148,7 +148,7 @@ export default function Departments() {
     <div>
       <div className="page-header">
         <div>
-          <h1>Departments</h1>
+          <h1><Building2 size={20} /> Departments</h1>
           <p>Organize your team into departments and assign managers.</p>
         </div>
         <button className="btn btn--primary" onClick={openAdd} disabled={migrationMissing}>
