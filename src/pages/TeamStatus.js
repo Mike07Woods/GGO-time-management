@@ -45,6 +45,20 @@ function hoursFmt(mins) {
   if (!mins) return '—';
   return `${(mins / 60).toFixed(1)}h`;
 }
+// Live "how long in this status" — e.g. "12m" or "1h 05m".
+function durationSince(iso) {
+  if (!iso) return '';
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+function clockTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
   return s || (p.email?.[0]?.toUpperCase() ?? '?');
@@ -63,6 +77,7 @@ export default function TeamStatus() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [myPings, setMyPings] = useState({}); // to_user_id -> last ping ms
+  const [clockInfo, setClockInfo] = useState({}); // user_id -> today's clock in/out
   const [statusFilter, setStatusFilter] = useState('all');
   // Managers are locked to their own department; admins/owners default to "all".
   const [deptFilter, setDeptFilter] = useState('all');
@@ -76,7 +91,10 @@ export default function TeamStatus() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [peopleRes, deptRes, pingRes] = await Promise.all([
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const [peopleRes, deptRes, pingRes, entriesRes] = await Promise.all([
       supabase
         .from('profiles')
         .select('id, first_name, last_name, email, role, avatar_url, department_id, is_active')
@@ -84,6 +102,10 @@ export default function TeamStatus() {
         .order('first_name', { ascending: true }),
       supabase.from('departments').select('id, name'),
       supabase.from('status_pings').select('to_user_id, created_at').eq('from_user_id', user.id),
+      supabase
+        .from('time_entries')
+        .select('user_id, clock_in, clock_out, status')
+        .gte('clock_in', startOfDay.toISOString()),
     ]);
     setPeople(peopleRes.data || []);
     setDepartments(deptRes.error ? [] : deptRes.data || []);
@@ -94,6 +116,27 @@ export default function TeamStatus() {
       if (!pings[row.to_user_id] || t > pings[row.to_user_id]) pings[row.to_user_id] = t;
     });
     setMyPings(pings);
+
+    // First clock-in + last clock-out today, and whether they're still on the clock.
+    const ci = {};
+    (entriesRes.data || []).forEach((e) => {
+      const cur = ci[e.user_id] || { firstIn: null, firstInMs: Infinity, lastOut: null, lastOutMs: 0, open: false };
+      const inMs = new Date(e.clock_in).getTime();
+      if (inMs < cur.firstInMs) {
+        cur.firstIn = e.clock_in;
+        cur.firstInMs = inMs;
+      }
+      if (e.status !== 'completed') cur.open = true;
+      if (e.clock_out) {
+        const outMs = new Date(e.clock_out).getTime();
+        if (outMs > cur.lastOutMs) {
+          cur.lastOut = e.clock_out;
+          cur.lastOutMs = outMs;
+        }
+      }
+      ci[e.user_id] = cur;
+    });
+    setClockInfo(ci);
     setLoading(false);
   }, [user.id]);
 
@@ -368,6 +411,12 @@ export default function TeamStatus() {
             const lastPing = myPings[p.id];
             const onCooldown = lastPing && Date.now() - lastPing < cooldownMs;
 
+            // Live disposition duration + over-limit detection.
+            const enteredAt = pres?.updated_at;
+            const durMin = enteredAt ? (Date.now() - new Date(enteredAt).getTime()) / 60000 : 0;
+            const overBy = st.max_minutes && durMin > st.max_minutes ? Math.round(durMin - st.max_minutes) : 0;
+            const ci = clockInfo[p.id];
+
             return (
               <div key={p.id} className="card ts-card">
                 {/* Ping button (manager+, not self) */}
@@ -412,11 +461,27 @@ export default function TeamStatus() {
 
                   <div className="ts-statusline" style={{ color: st.color }}>
                     <span>{st.emoji}</span> {st.name}
+                    {enteredAt && st.name !== 'Offline' && (
+                      <span className="dim" style={{ fontWeight: 400, fontSize: 12 }}>
+                        · for {durationSince(enteredAt)}
+                      </span>
+                    )}
                   </div>
+
+                  {overBy > 0 && (
+                    <span className="badge badge--red" style={{ marginTop: 4 }}>
+                      ⚠ Over limit by {overBy}m
+                    </span>
+                  )}
 
                   {pres?.custom_note && <div className="ts-note">“{pres.custom_note}”</div>}
                   {showAgo && pres?.last_active_at && (
                     <div className="ts-ago">Last active {timeAgo(pres.afk_at || pres.last_active_at)}</div>
+                  )}
+                  {ci && (
+                    <div className="ts-ago">
+                      In {clockTime(ci.firstIn)} · Out {ci.open ? '—' : clockTime(ci.lastOut)}
+                    </div>
                   )}
                 </div>
               </div>

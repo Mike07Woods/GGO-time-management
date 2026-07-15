@@ -20,14 +20,22 @@ export default function StatusSettings() {
   const [allowNotes, setAllowNotes] = useState(true);
   const [customs, setCustoms] = useState([]); // editable non-system statuses
   const [deleted, setDeleted] = useState([]); // ids removed from the list
+  const [limits, setLimits] = useState({}); // status id -> max_minutes (string)
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingStatuses, setSavingStatuses] = useState(false);
+  const [savingLimits, setSavingLimits] = useState(false);
 
   useEffect(() => {
     setAfk(settings.afk_timeout_minutes ?? 15);
     setCooldown(settings.ping_cooldown_minutes ?? 5);
     setAllowNotes(settings.allow_custom_notes ?? true);
   }, [settings]);
+
+  useEffect(() => {
+    const m = {};
+    statusTypes.forEach((s) => (m[s.id] = s.max_minutes == null ? '' : String(s.max_minutes)));
+    setLimits(m);
+  }, [statusTypes]);
 
   useEffect(() => {
     setCustoms(
@@ -104,6 +112,20 @@ export default function StatusSettings() {
     toast.success('Custom statuses saved');
   }
 
+  async function saveLimits() {
+    setSavingLimits(true);
+    for (const s of statusTypes) {
+      const raw = limits[s.id];
+      const next = raw === '' || raw == null ? null : Number(raw);
+      if (next !== (s.max_minutes ?? null)) {
+        await supabase.from('status_types').update({ max_minutes: next }).eq('id', s.id);
+      }
+    }
+    setSavingLimits(false);
+    await reloadStatusTypes();
+    toast.success('Time limits saved');
+  }
+
   return (
     <div className="card" style={{ marginTop: 18 }}>
       <div className="card__title">Status Settings</div>
@@ -142,6 +164,46 @@ export default function StatusSettings() {
 
       <button className="btn btn--primary btn--sm" onClick={saveSettings} disabled={savingSettings}>
         {savingSettings ? 'Saving…' : 'Save settings'}
+      </button>
+
+      {/* Per-disposition time limits */}
+      <div className="card__title" style={{ marginTop: 24 }}>
+        Time limits
+      </div>
+      <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
+        Flag a user on the monitor (and notify them) if they stay in a status past this many minutes.
+        Leave blank for no limit.
+      </div>
+
+      <div className="stack" style={{ gap: 8 }}>
+        {statusTypes.map((s) => (
+          <div key={s.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
+            <span style={{ width: 130, fontSize: 14 }}>
+              {s.emoji} {s.name}
+            </span>
+            <input
+              type="number"
+              className="input"
+              min={1}
+              max={480}
+              style={{ maxWidth: 120 }}
+              placeholder="No limit"
+              value={limits[s.id] ?? ''}
+              onChange={(e) => setLimits((m) => ({ ...m, [s.id]: e.target.value }))}
+            />
+            <span className="dim" style={{ fontSize: 12 }}>
+              minutes
+            </span>
+          </div>
+        ))}
+      </div>
+      <button
+        className="btn btn--primary btn--sm"
+        style={{ marginTop: 12 }}
+        onClick={saveLimits}
+        disabled={savingLimits}
+      >
+        {savingLimits ? 'Saving…' : 'Save time limits'}
       </button>
 
       {/* Custom statuses */}

@@ -31,6 +31,9 @@ export function PresenceProvider({ children }) {
   const afkIdRef = useRef(null);
   const offlineIdRef = useRef(null);
   const myStatusIdRef = useRef(null);
+  const myUpdatedAtRef = useRef(null); // when I entered my current status
+  const statusTypesRef = useRef([]);
+  const notifiedOverrunRef = useRef(null); // status-instance already alerted on
   const settingsRef = useRef(settings);
 
   // Keep refs of the system status ids in sync.
@@ -40,10 +43,13 @@ export function PresenceProvider({ children }) {
     activeIdRef.current = byName['Active']?.id || null;
     afkIdRef.current = byName['AFK']?.id || null;
     offlineIdRef.current = byName['Offline']?.id || null;
+    statusTypesRef.current = statusTypes;
   }, [statusTypes]);
 
   useEffect(() => {
-    myStatusIdRef.current = user ? allPresence[user.id]?.status_type_id || null : null;
+    const mine = user ? allPresence[user.id] : null;
+    myStatusIdRef.current = mine?.status_type_id || null;
+    myUpdatedAtRef.current = mine?.updated_at || null;
   }, [allPresence, user]);
 
   useEffect(() => {
@@ -181,6 +187,22 @@ export function PresenceProvider({ children }) {
         await supabase.from('user_presence').update({ afk_at: new Date().toISOString() }).eq('user_id', user.id);
       } else if (current === active) {
         await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', user.id);
+      }
+
+      // Disposition time-limit check — notify myself once per status instance if
+      // I've stayed in a status past its max_minutes.
+      const st = statusTypesRef.current.find((t) => t.id === current);
+      const enteredAt = myUpdatedAtRef.current ? new Date(myUpdatedAtRef.current).getTime() : null;
+      if (st?.max_minutes && enteredAt && (Date.now() - enteredAt) / 60000 > st.max_minutes) {
+        if (notifiedOverrunRef.current !== myUpdatedAtRef.current) {
+          notifiedOverrunRef.current = myUpdatedAtRef.current;
+          await supabase.from('notifications').insert({
+            user_id: user.id,
+            title: 'Status time exceeded',
+            body: `You've been "${st.name}" for over ${st.max_minutes} minutes.`,
+            type: 'status',
+          });
+        }
       }
     }, 60000);
     return () => clearInterval(interval);

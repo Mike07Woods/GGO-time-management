@@ -177,6 +177,13 @@ drop trigger if exists on_presence_change on public.user_presence;
 create trigger on_presence_change after insert or update on public.user_presence
   for each row execute function public.fn_log_presence();
 
+-- ----------------------------------------------------------------------------
+-- Per-disposition time limit (minutes). Null = no limit. When a user stays in a
+-- status past this, the monitor flags it and the user gets a notification.
+-- ----------------------------------------------------------------------------
+alter table public.status_types add column if not exists max_minutes int;
+update public.status_types set max_minutes = 30 where name = 'On Break' and max_minutes is null;
+
 -- ============================================================================
 -- DONE. The Team Status page + presence indicators will now work.
 -- ============================================================================
