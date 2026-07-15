@@ -184,6 +184,66 @@ create trigger on_presence_change after insert or update on public.user_presence
 alter table public.status_types add column if not exists max_minutes int;
 update public.status_types set max_minutes = 30 where name = 'On Break' and max_minutes is null;
 
+-- Remembers which status-instance (by its updated_at) we've already alerted on,
+-- so managers are notified once per overrun — not every minute.
+alter table public.user_presence add column if not exists overrun_alerted_for timestamptz;
+
+-- ----------------------------------------------------------------------------
+-- Server-side over-limit alerting (runs on a schedule via pg_cron, so managers
+-- are notified even when nobody has the monitor open).
+-- Notifies admins/owners always, and managers in the same department as the
+-- offender. Fires once per status instance.
+-- ----------------------------------------------------------------------------
+create or replace function public.fn_check_disposition_overruns()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    select up.user_id,
+           up.updated_at,
+           st.name        as status_name,
+           st.max_minutes,
+           p.department_id as user_dept,
+           coalesce(nullif(trim(coalesce(p.first_name, '') || ' ' || coalesce(p.last_name, '')), ''), p.email) as person
+    from public.user_presence up
+    join public.status_types st on st.id = up.status_type_id
+    join public.profiles p on p.id = up.user_id
+    where st.max_minutes is not null
+      and up.updated_at < now() - make_interval(mins => st.max_minutes)
+      and (up.overrun_alerted_for is null or up.overrun_alerted_for <> up.updated_at)
+  loop
+    insert into public.notifications (user_id, title, body, type)
+    select mgr.id,
+           'Disposition time exceeded',
+           r.person || ' has been "' || r.status_name || '" for over ' || r.max_minutes || ' minutes.',
+           'status_overrun'
+    from public.profiles mgr
+    where mgr.is_active = true
+      and mgr.id <> r.user_id
+      and (
+        mgr.role in ('admin', 'owner')
+        or (mgr.role = 'manager' and mgr.department_id is not distinct from r.user_dept)
+      );
+
+    update public.user_presence set overrun_alerted_for = r.updated_at where user_id = r.user_id;
+  end loop;
+end;
+$$;
+
+-- Schedule it every minute. Requires pg_cron (enable under Database -> Extensions
+-- if the CREATE EXTENSION line errors, then re-run this file).
+create extension if not exists pg_cron;
+
+do $$
+begin
+  perform cron.unschedule('disposition-overrun-check');
+exception
+  when others then null; -- job didn't exist yet
+end $$;
+
+select cron.schedule('disposition-overrun-check', '* * * * *',
+  $$ select public.fn_check_disposition_overruns(); $$);
+
 -- ============================================================================
 -- DONE. The Team Status page + presence indicators will now work.
 -- ============================================================================
