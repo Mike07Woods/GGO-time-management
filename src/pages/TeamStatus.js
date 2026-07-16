@@ -41,9 +41,11 @@ function ymd(d) {
     x.getDate()
   ).padStart(2, '0')}`;
 }
-function hoursFmt(mins) {
+function fmtMins(mins) {
   if (!mins) return '—';
-  return `${(mins / 60).toFixed(1)}h`;
+  const m = Math.round(mins);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 }
 // Live "how long in this status" — e.g. "12m" or "1h 05m".
 function durationSince(iso) {
@@ -68,7 +70,7 @@ export default function TeamStatus() {
   const { user, profile } = useAuth();
   const { isManager, isAdmin } = useRole();
   const toast = useToast();
-  const { enabled, allPresence, getStatus, statusById, settings } = usePresence();
+  const { enabled, allPresence, getStatus, statusById, statusTypes, settings } = usePresence();
 
   const canPing = isManager; // manager/admin/owner
   const adminView = isAdmin; // admins/owners may change the department filter
@@ -284,6 +286,15 @@ export default function TeamStatus() {
       .sort((a, b) => b.active - a.active);
   }, [logRows, deptScoped, statusById, anaDate]);
 
+  // Disposition columns for the analytics table (every status except Offline).
+  const anaCols = useMemo(
+    () =>
+      statusTypes
+        .filter((s) => s.name !== 'Offline')
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+    [statusTypes]
+  );
+
   const summaryCards = [
     { key: 'online', label: 'Total Online', color: '#00D15E', value: summary.online },
     { key: 'Active', label: 'Active', color: '#00D15E', value: summary.Active },
@@ -407,7 +418,7 @@ export default function TeamStatus() {
             const st = statusOf(p);
             const pres = allPresence[p.id];
             const isMe = p.id === user.id;
-            const showAgo = st.name === 'AFK' || st.name === 'Offline';
+            const showAgo = st.name === 'Offline';
             const lastPing = myPings[p.id];
             const onCooldown = lastPing && Date.now() - lastPing < cooldownMs;
 
@@ -510,7 +521,7 @@ export default function TeamStatus() {
             />
           </div>
           <div className="dim" style={{ fontSize: 12, margin: '4px 0 12px' }}>
-            Hours spent in each status on the selected day.
+            Total time spent in each disposition on the selected day.
           </div>
 
           {anaLoading ? (
@@ -523,20 +534,27 @@ export default function TeamStatus() {
                 <thead>
                   <tr>
                     <th>Employee</th>
-                    <th>🟢 Active</th>
-                    <th>🟡 On Break</th>
-                    <th>🔴 AFK</th>
+                    {anaCols.map((c) => (
+                      <th key={c.id}>
+                        {c.emoji} {c.name}
+                      </th>
+                    ))}
+                    <th>Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.map((r) => (
-                    <tr key={r.id}>
-                      <td style={{ fontWeight: 600 }}>{r.name}</td>
-                      <td>{hoursFmt(r.mins.Active)}</td>
-                      <td>{hoursFmt(r.mins['On Break'])}</td>
-                      <td>{hoursFmt(r.mins.AFK)}</td>
-                    </tr>
-                  ))}
+                  {analytics.map((r) => {
+                    const total = anaCols.reduce((s, c) => s + (r.mins[c.name] || 0), 0);
+                    return (
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        {anaCols.map((c) => (
+                          <td key={c.id}>{fmtMins(r.mins[c.name])}</td>
+                        ))}
+                        <td style={{ fontWeight: 600 }}>{fmtMins(total)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -12,7 +12,6 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 
 const PresenceContext = createContext(null);
-const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
 
 export function PresenceProvider({ children }) {
   const { user } = useAuth();
@@ -26,23 +25,15 @@ export function PresenceProvider({ children }) {
   });
   const [enabled, setEnabled] = useState(false); // true once the tables are reachable
 
-  const lastActivity = useRef(Date.now());
-  const activeIdRef = useRef(null);
-  const afkIdRef = useRef(null);
   const offlineIdRef = useRef(null);
   const myStatusIdRef = useRef(null);
   const myUpdatedAtRef = useRef(null); // when I entered my current status
   const statusTypesRef = useRef([]);
   const notifiedOverrunRef = useRef(null); // status-instance already alerted on
-  const settingsRef = useRef(settings);
 
-  // Keep refs of the system status ids in sync.
+  // Keep refs in sync.
   useEffect(() => {
-    const byName = {};
-    statusTypes.forEach((t) => (byName[t.name] = t));
-    activeIdRef.current = byName['Active']?.id || null;
-    afkIdRef.current = byName['AFK']?.id || null;
-    offlineIdRef.current = byName['Offline']?.id || null;
+    offlineIdRef.current = statusTypes.find((t) => t.name === 'Offline')?.id || null;
     statusTypesRef.current = statusTypes;
   }, [statusTypes]);
 
@@ -52,18 +43,15 @@ export function PresenceProvider({ children }) {
     myUpdatedAtRef.current = mine?.updated_at || null;
   }, [allPresence, user]);
 
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
-
   const statusById = useCallback(
     (id) => statusTypes.find((t) => t.id === id) || null,
     [statusTypes]
   );
 
-  // How long after last activity a status is treated as stale -> shown Offline.
-  // (Covers laptops closed without a clean tab-close event.)
-  const staleMinutes = Math.max(30, (settings.afk_timeout_minutes || 15) * 2);
+  // A tab heartbeats every 60s; if we haven't heard from someone in this long
+  // (e.g. laptop closed without a clean unload) we show them Offline. Status is
+  // otherwise fully manual — we never change it based on mouse/keyboard activity.
+  const staleMinutes = 5;
 
   const OFFLINE_FALLBACK = { name: 'Offline', color: '#6B7280', emoji: '⚫' };
 
@@ -159,38 +147,19 @@ export function PresenceProvider({ children }) {
     };
   }, [user, fetchAllPresence]);
 
-  // --- Activity tracking (return from AFK immediately on activity) ---
-  useEffect(() => {
-    if (!enabled) return undefined;
-    const onActivity = () => {
-      lastActivity.current = Date.now();
-      if (myStatusIdRef.current && myStatusIdRef.current === afkIdRef.current && activeIdRef.current) {
-        setMyStatus(activeIdRef.current);
-      }
-    };
-    ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
-    return () => ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, onActivity));
-  }, [enabled, setMyStatus]);
-
-  // --- Heartbeat + auto-AFK (every 60s) ---
+  // --- Heartbeat (every 60s): keep my presence fresh + over-limit self-alert.
+  //     No auto-AFK — status only changes when the user (or the time clock)
+  //     sets it explicitly. ---
   useEffect(() => {
     if (!enabled || !user) return undefined;
     const interval = setInterval(async () => {
-      const active = activeIdRef.current;
-      const afk = afkIdRef.current;
-      const current = myStatusIdRef.current;
-      const idleMin = (Date.now() - lastActivity.current) / 60000;
-      const timeout = settingsRef.current.afk_timeout_minutes || 15;
-
-      if (active && afk && current === active && idleMin >= timeout) {
-        await setMyStatus(afk);
-        await supabase.from('user_presence').update({ afk_at: new Date().toISOString() }).eq('user_id', user.id);
-      } else if (current === active) {
-        await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', user.id);
-      }
+      // Keep last_active_at current so an open tab never looks stale, whatever
+      // status the user has manually chosen.
+      await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', user.id);
 
       // Disposition time-limit check — notify myself once per status instance if
       // I've stayed in a status past its max_minutes.
+      const current = myStatusIdRef.current;
       const st = statusTypesRef.current.find((t) => t.id === current);
       const enteredAt = myUpdatedAtRef.current ? new Date(myUpdatedAtRef.current).getTime() : null;
       if (st?.max_minutes && enteredAt && (Date.now() - enteredAt) / 60000 > st.max_minutes) {
@@ -206,7 +175,7 @@ export function PresenceProvider({ children }) {
       }
     }, 60000);
     return () => clearInterval(interval);
-  }, [enabled, user, setMyStatus]);
+  }, [enabled, user]);
 
   // --- Realtime: any presence change re-syncs everyone ---
   useEffect(() => {

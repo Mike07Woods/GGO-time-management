@@ -15,7 +15,6 @@ export default function StatusSettings() {
   const toast = useToast();
   const { enabled, statusTypes, settings, reloadStatusTypes, refreshSettings } = usePresence();
 
-  const [afk, setAfk] = useState(15);
   const [cooldown, setCooldown] = useState(5);
   const [allowNotes, setAllowNotes] = useState(true);
   const [customs, setCustoms] = useState([]); // editable non-system statuses
@@ -26,7 +25,6 @@ export default function StatusSettings() {
   const [savingLimits, setSavingLimits] = useState(false);
 
   useEffect(() => {
-    setAfk(settings.afk_timeout_minutes ?? 15);
     setCooldown(settings.ping_cooldown_minutes ?? 5);
     setAllowNotes(settings.allow_custom_notes ?? true);
   }, [settings]);
@@ -74,7 +72,6 @@ export default function StatusSettings() {
     const { error } = await supabase
       .from('status_settings')
       .update({
-        afk_timeout_minutes: Number(afk),
         ping_cooldown_minutes: Number(cooldown),
         allow_custom_notes: allowNotes,
         updated_at: new Date().toISOString(),
@@ -130,29 +127,16 @@ export default function StatusSettings() {
     <div className="card" style={{ marginTop: 18 }}>
       <div className="card__title">Status Settings</div>
 
-      <div className="form-row">
-        <div className="field">
-          <label>Mark user as AFK after (minutes)</label>
-          <input
-            type="number"
-            className="input"
-            min={1}
-            max={120}
-            value={afk}
-            onChange={(e) => setAfk(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Minimum time between pings (minutes)</label>
-          <input
-            type="number"
-            className="input"
-            min={1}
-            max={60}
-            value={cooldown}
-            onChange={(e) => setCooldown(e.target.value)}
-          />
-        </div>
+      <div className="field" style={{ maxWidth: 320 }}>
+        <label>Minimum time between pings (minutes)</label>
+        <input
+          type="number"
+          className="input"
+          min={1}
+          max={60}
+          value={cooldown}
+          onChange={(e) => setCooldown(e.target.value)}
+        />
       </div>
 
       <div className="field">

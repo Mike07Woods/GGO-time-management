@@ -184,6 +184,12 @@ create trigger on_presence_change after insert or update on public.user_presence
 alter table public.status_types add column if not exists max_minutes int;
 update public.status_types set max_minutes = 30 where name = 'On Break' and max_minutes is null;
 
+-- "Coaching" disposition (added for existing installs; the initial seed only
+-- runs on an empty table).
+insert into public.status_types (name, color, emoji, is_afk, is_system, sort_order)
+select 'Coaching', '#EC4899', '🎯', false, false, 7
+where not exists (select 1 from public.status_types where name = 'Coaching');
+
 -- Remembers which status-instance (by its updated_at) we've already alerted on,
 -- so managers are notified once per overrun — not every minute.
 alter table public.user_presence add column if not exists overrun_alerted_for timestamptz;

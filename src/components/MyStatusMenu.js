@@ -7,11 +7,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { usePresence } from '../context/PresenceContext';
 
+// Statuses that should prompt the user for a note (e.g. what the meeting is about).
+const NOTE_STATUSES = ['in meeting', 'coaching'];
+const needsNote = (name) => NOTE_STATUSES.includes((name || '').toLowerCase());
+
 export default function MyStatusMenu() {
   const { enabled, statusTypes, myPresence, statusById, setMyStatus, settings } = usePresence();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const ref = useRef(null);
+  const noteInputRef = useRef(null);
 
   // Keep the note field in sync with the server value.
   useEffect(() => {
@@ -32,10 +37,18 @@ export default function MyStatusMenu() {
 
   const current = myPresence ? statusById(myPresence.status_type_id) : null;
   const color = current?.color || '#6B7280';
+  // Notes are shown for meeting/coaching regardless of the free-notes toggle.
+  const showNote = settings.allow_custom_notes || needsNote(current?.name);
 
   const pick = (st) => {
-    setMyStatus(st.id, settings.allow_custom_notes ? note : undefined);
-    setOpen(false);
+    const includeNote = settings.allow_custom_notes || needsNote(st.name);
+    setMyStatus(st.id, includeNote ? note : undefined);
+    if (needsNote(st.name)) {
+      // Keep the menu open so they can type what the meeting/coaching is about.
+      setTimeout(() => noteInputRef.current?.focus(), 0);
+    } else {
+      setOpen(false);
+    }
   };
   const saveNote = () => {
     if (current) setMyStatus(current.id, note);
@@ -96,11 +109,12 @@ export default function MyStatusMenu() {
               {current?.id === st.id && <span className="mystatus__check">✓</span>}
             </button>
           ))}
-          {settings.allow_custom_notes && (
+          {showNote && (
             <div className="mystatus__note">
               <input
+                ref={noteInputRef}
                 className="input"
-                placeholder="Add a note…"
+                placeholder={needsNote(current?.name) ? 'Add a note (e.g. topic)…' : 'Add a note…'}
                 maxLength={80}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
