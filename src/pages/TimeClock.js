@@ -44,17 +44,42 @@ function formatCoords(lat, lng) {
   return `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
 }
 
+// Dispositions that prompt for a note (what the meeting/coaching is about).
+const NOTE_STATUSES = ['in meeting', 'coaching'];
+
+// Live "how long in this disposition" — e.g. "12m" / "1h 05m".
+function durationSince(iso) {
+  if (!iso) return '';
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
+}
+
 export default function TimeClock() {
   const { user } = useAuth();
   const toast = useToast();
-  // Presence follows the shift: clock-in -> Active, break -> On Break, out -> Offline.
-  const { setMyStatusByName } = usePresence();
+  // Dispositions ARE the on-shift controls: clock-in -> Active, then the user
+  // sets Break / AFK / Meeting / etc.; clock-out -> Offline.
+  const {
+    enabled: presenceEnabled,
+    statusTypes,
+    myPresence,
+    statusById,
+    setMyStatusByName,
+  } = usePresence();
 
   const [entry, setEntry] = useState(null); // current open entry (active/on_break)
   const [history, setHistory] = useState([]); // recent completed entries
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [note, setNote] = useState(''); // note for meeting/coaching dispositions
+
+  // Keep the note field in sync with the server value.
+  useEffect(() => {
+    setNote(myPresence?.custom_note || '');
+  }, [myPresence]);
 
   // Tick every second so the elapsed timer updates live.
   useEffect(() => {
@@ -165,6 +190,44 @@ export default function TimeClock() {
     toast.success('Break ended');
   }
 
+  // Set the current disposition (Active / On Break / AFK / Meeting / …). The
+  // "On Break" disposition also drives the time_entries break window so paid
+  // hours stay accurate; other dispositions are tracked as presence only.
+  async function setDisposition(name) {
+    if (!entry || busy) return;
+    setBusy(true);
+    const wasOnBreak = entry.status === 'on_break';
+    const goingOnBreak = name === 'On Break';
+    const isNoteStatus = NOTE_STATUSES.includes(name.toLowerCase());
+
+    await setMyStatusByName(name, isNoteStatus ? note : '');
+
+    if (goingOnBreak && !wasOnBreak) {
+      const { data } = await supabase
+        .from('time_entries')
+        .update({ status: 'on_break', break_start: new Date().toISOString() })
+        .eq('id', entry.id)
+        .select()
+        .single();
+      if (data) setEntry(data);
+    } else if (!goingOnBreak && wasOnBreak) {
+      const { data } = await supabase
+        .from('time_entries')
+        .update({ status: 'active', break_end: new Date().toISOString() })
+        .eq('id', entry.id)
+        .select()
+        .single();
+      if (data) setEntry(data);
+    }
+    setBusy(false);
+  }
+
+  // Save the note for the current meeting/coaching disposition.
+  function saveNote() {
+    const cur = myPresence ? statusById(myPresence.status_type_id) : null;
+    if (cur) setMyStatusByName(cur.name, note);
+  }
+
   // CLOCK OUT — capture GPS, compute total hours (minus any break), complete.
   async function clockOut() {
     setBusy(true);
@@ -177,12 +240,11 @@ export default function TimeClock() {
     }
 
     const clockOutAt = new Date();
-    const totalHours = computeTotalHours(
-      entry.clock_in,
-      clockOutAt,
-      entry.break_start,
-      entry.break_end
-    );
+    // If they clock out while still On Break, close the break at clock-out time
+    // so those minutes are deducted from paid hours.
+    const breakEnd =
+      entry.status === 'on_break' && !entry.break_end ? clockOutAt.toISOString() : entry.break_end;
+    const totalHours = computeTotalHours(entry.clock_in, clockOutAt, entry.break_start, breakEnd);
 
     const { error } = await supabase
       .from('time_entries')
@@ -190,6 +252,7 @@ export default function TimeClock() {
         clock_out: clockOutAt.toISOString(),
         clock_out_lat: coords.lat,
         clock_out_lng: coords.lng,
+        break_end: breakEnd,
         total_hours: Number(totalHours.toFixed(2)),
         status: 'completed',
       })
@@ -218,6 +281,8 @@ export default function TimeClock() {
   }
 
   const onBreak = entry?.status === 'on_break';
+  const currentDisp = presenceEnabled && myPresence ? statusById(myPresence.status_type_id) : null;
+  const dispositions = statusTypes.filter((s) => s.name !== 'Offline');
 
   return (
     <div>
@@ -246,39 +311,97 @@ export default function TimeClock() {
             <SkeletonList rows={2} />
           ) : entry ? (
             <>
-              <div style={{ textAlign: 'center', padding: '10px 0 18px' }}>
+              {/* Shift timer */}
+              <div style={{ textAlign: 'center', padding: '6px 0 12px' }}>
                 <div style={{ fontSize: 40, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
                   {elapsed()}
                 </div>
                 <div className="dim">since clock-in at {formatTime(entry.clock_in)}</div>
               </div>
 
-              <div className="stack" style={{ marginBottom: 16 }}>
+              {/* Current disposition + live duration */}
+              {currentDisp && (
+                <div style={{ textAlign: 'center', marginBottom: 14 }}>
+                  <span style={{ color: currentDisp.color, fontWeight: 700 }}>
+                    {currentDisp.emoji} {currentDisp.name}
+                  </span>
+                  {myPresence?.updated_at && (
+                    <span className="dim"> · for {durationSince(myPresence.updated_at)}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Disposition controls (fallback to a simple break toggle if
+                  live presence isn't set up yet) */}
+              {presenceEnabled && dispositions.length > 0 ? (
+                <>
+                  <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
+                    Set your disposition
+                  </div>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    {dispositions.map((s) => {
+                      const active = currentDisp?.id === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          className={'btn btn--sm ' + (active ? 'btn--primary' : 'btn--ghost')}
+                          disabled={busy}
+                          onClick={() => setDisposition(s.name)}
+                        >
+                          {s.emoji} {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {currentDisp && NOTE_STATUSES.includes(currentDisp.name.toLowerCase()) && (
+                    <div className="field" style={{ marginBottom: 12 }}>
+                      <input
+                        className="input"
+                        placeholder={`Note for this ${currentDisp.name.toLowerCase()}…`}
+                        maxLength={80}
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        onBlur={saveNote}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            saveNote();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="row" style={{ marginBottom: 12 }}>
+                  {onBreak ? (
+                    <button className="btn btn--secondary btn--block" disabled={busy} onClick={endBreak}>
+                      End break
+                    </button>
+                  ) : (
+                    <button className="btn btn--ghost btn--block" disabled={busy} onClick={startBreak}>
+                      Start break
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <button className="btn btn--danger btn--block" disabled={busy} onClick={clockOut}>
+                Clock out
+              </button>
+
+              {/* Details */}
+              <div className="stack" style={{ marginTop: 16 }}>
                 <div className="row row--between">
                   <span className="muted">Clock-in location</span>
                   <span>{formatCoords(entry.clock_in_lat, entry.clock_in_lng)}</span>
                 </div>
                 {entry.break_start && (
                   <div className="row row--between">
-                    <span className="muted">Break started</span>
+                    <span className="muted">Last break started</span>
                     <span>{formatTime(entry.break_start)}</span>
                   </div>
                 )}
-              </div>
-
-              <div className="row">
-                {onBreak ? (
-                  <button className="btn btn--secondary btn--block" disabled={busy} onClick={endBreak}>
-                    End break
-                  </button>
-                ) : (
-                  <button className="btn btn--ghost btn--block" disabled={busy} onClick={startBreak}>
-                    Start break
-                  </button>
-                )}
-                <button className="btn btn--danger btn--block" disabled={busy} onClick={clockOut}>
-                  Clock out
-                </button>
               </div>
             </>
           ) : (
