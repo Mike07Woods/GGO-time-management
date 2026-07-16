@@ -21,6 +21,11 @@ function clockTime(v) {
   return new Date(v).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
+function dateFmt(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function downloadCsv(filename, rows) {
   const csv = rows
     .map((r) => r.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
@@ -57,6 +62,10 @@ export default function Reports() {
   const [attDate, setAttDate] = useState(ymd(new Date()));
   const [attRows, setAttRows] = useState([]);
   const [attLoading, setAttLoading] = useState(true);
+
+  // Attendance log across the top date range (one row per clock-in).
+  const [logRows, setLogRows] = useState([]);
+  const [logLoading, setLogLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -199,6 +208,60 @@ export default function Reports() {
       r.open ? 'Clocked in' : 'Completed',
     ]);
     downloadCsv(`attendance_${attDate}.csv`, [header, ...body]);
+  }
+
+  // Load one row per clock-in across the top [start, end] range.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLogLoading(true);
+      const startIso = new Date(`${start}T00:00:00`).toISOString();
+      const endEx = new Date(`${end}T00:00:00`);
+      endEx.setDate(endEx.getDate() + 1);
+
+      const [peopleRes, entriesRes] = await Promise.all([
+        supabase.from('profiles').select('id, first_name, last_name, email'),
+        supabase
+          .from('time_entries')
+          .select('id, user_id, clock_in, clock_out, total_hours, status')
+          .gte('clock_in', startIso)
+          .lt('clock_in', endEx.toISOString())
+          .order('clock_in', { ascending: false }),
+      ]);
+      if (!active) return;
+
+      const nameById = {};
+      (peopleRes.data || []).forEach((p) => {
+        nameById[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email;
+      });
+      setLogRows(
+        (entriesRes.data || []).map((e) => ({
+          id: e.id,
+          name: nameById[e.user_id] || 'Unknown',
+          clockIn: e.clock_in,
+          clockOut: e.clock_out,
+          hours: e.total_hours,
+          status: e.status,
+        }))
+      );
+      setLogLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [start, end]);
+
+  function exportLog() {
+    const header = ['Employee', 'Date', 'Clock in', 'Clock out', 'Hours', 'Status'];
+    const body = logRows.map((r) => [
+      r.name,
+      dateFmt(r.clockIn),
+      clockTime(r.clockIn),
+      r.clockOut ? clockTime(r.clockOut) : 'Still in',
+      r.hours != null ? Number(r.hours).toFixed(2) : '',
+      r.status,
+    ]);
+    downloadCsv(`attendance_log_${start}_to_${end}.csv`, [header, ...body]);
   }
 
   const completionRate =
@@ -366,6 +429,60 @@ export default function Reports() {
                         <span className="badge badge--green">Clocked in</span>
                       ) : (
                         <span className="badge badge--gray">Completed</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Attendance log — one row per clock-in across the top date range */}
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="card__title" style={{ justifyContent: 'space-between' }}>
+          <span>
+            Attendance Log — {start} to {end}
+          </span>
+          <button className="btn btn--ghost btn--sm" onClick={exportLog} disabled={logRows.length === 0}>
+            ⬇ CSV
+          </button>
+        </div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
+          One row per clock-in across the “From / To” range at the top of the page.
+        </div>
+
+        {logLoading ? (
+          <SkeletonList />
+        ) : logRows.length === 0 ? (
+          <div className="empty-state">No clock-ins in this range.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Clock in</th>
+                  <th>Clock out</th>
+                  <th>Hours</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logRows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    <td>{dateFmt(r.clockIn)}</td>
+                    <td>{clockTime(r.clockIn)}</td>
+                    <td>{r.clockOut ? clockTime(r.clockOut) : <span className="dim">Still in</span>}</td>
+                    <td>{r.hours != null ? `${Number(r.hours).toFixed(2)}h` : '—'}</td>
+                    <td>
+                      {r.status === 'completed' ? (
+                        <span className="badge badge--gray">Completed</span>
+                      ) : (
+                        <span className="badge badge--green">{r.status}</span>
                       )}
                     </td>
                   </tr>
