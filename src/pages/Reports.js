@@ -16,6 +16,11 @@ function ymd(d) {
   ).padStart(2, '0')}`;
 }
 
+function clockTime(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 function downloadCsv(filename, rows) {
   const csv = rows
     .map((r) => r.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
@@ -47,6 +52,11 @@ export default function Reports() {
   const [tsCounts, setTsCounts] = useState({ submitted: 0, approved: 0, rejected: 0, draft: 0 });
   const [taskStats, setTaskStats] = useState({ total: 0, completed: 0 });
   const [threshold, setThreshold] = useState(40);
+
+  // Daily clock in/out attendance (its own single-date picker).
+  const [attDate, setAttDate] = useState(ymd(new Date()));
+  const [attRows, setAttRows] = useState([]);
+  const [attLoading, setAttLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +126,80 @@ export default function Reports() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Load a single day's clock in/out per employee.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setAttLoading(true);
+      const dayStart = new Date(`${attDate}T00:00:00`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const [peopleRes, entriesRes] = await Promise.all([
+        supabase.from('profiles').select('id, first_name, last_name, email'),
+        supabase
+          .from('time_entries')
+          .select('user_id, clock_in, clock_out, total_hours, status')
+          .gte('clock_in', dayStart.toISOString())
+          .lt('clock_in', dayEnd.toISOString()),
+      ]);
+      if (!active) return;
+
+      const nameById = {};
+      (peopleRes.data || []).forEach((p) => {
+        nameById[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email;
+      });
+
+      const byUser = {};
+      (entriesRes.data || []).forEach((e) => {
+        const cur = byUser[e.user_id] || {
+          firstIn: null,
+          firstInMs: Infinity,
+          lastOut: null,
+          lastOutMs: 0,
+          hours: 0,
+          open: false,
+        };
+        const inMs = new Date(e.clock_in).getTime();
+        if (inMs < cur.firstInMs) {
+          cur.firstInMs = inMs;
+          cur.firstIn = e.clock_in;
+        }
+        if (e.status !== 'completed') cur.open = true;
+        if (e.clock_out) {
+          const outMs = new Date(e.clock_out).getTime();
+          if (outMs > cur.lastOutMs) {
+            cur.lastOutMs = outMs;
+            cur.lastOut = e.clock_out;
+          }
+        }
+        if (e.total_hours != null) cur.hours += Number(e.total_hours);
+        byUser[e.user_id] = cur;
+      });
+
+      const rows = Object.entries(byUser)
+        .map(([id, v]) => ({ id, name: nameById[id] || 'Unknown', ...v }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setAttRows(rows);
+      setAttLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [attDate]);
+
+  function exportAttendanceDay() {
+    const header = ['Employee', 'Clock in', 'Clock out', 'Total hours', 'Status'];
+    const body = attRows.map((r) => [
+      r.name,
+      clockTime(r.firstIn),
+      r.open ? 'Still in' : clockTime(r.lastOut),
+      r.hours.toFixed(2),
+      r.open ? 'Clocked in' : 'Completed',
+    ]);
+    downloadCsv(`attendance_${attDate}.csv`, [header, ...body]);
+  }
 
   const completionRate =
     taskStats.total > 0 ? Math.round((taskStats.completed / taskStats.total) * 100) : 0;
@@ -221,6 +305,67 @@ export default function Reports() {
                         <span className="badge badge--amber">Approaching</span>
                       ) : (
                         <span className="badge badge--green">Normal</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Daily clock in / out for all users */}
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="card__title" style={{ justifyContent: 'space-between' }}>
+          <span>Daily Attendance — Clock In / Out</span>
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              type="date"
+              className="input"
+              style={{ maxWidth: 170 }}
+              max={ymd(today)}
+              value={attDate}
+              onChange={(e) => setAttDate(e.target.value)}
+            />
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={exportAttendanceDay}
+              disabled={attRows.length === 0}
+            >
+              ⬇ CSV
+            </button>
+          </div>
+        </div>
+
+        {attLoading ? (
+          <SkeletonList />
+        ) : attRows.length === 0 ? (
+          <div className="empty-state">No clock-ins on this day.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Clock in</th>
+                  <th>Clock out</th>
+                  <th>Total hours</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attRows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    <td>{clockTime(r.firstIn)}</td>
+                    <td>{r.open ? <span className="dim">Still in</span> : clockTime(r.lastOut)}</td>
+                    <td>{r.hours > 0 ? `${r.hours.toFixed(2)}h` : r.open ? 'in progress' : '—'}</td>
+                    <td>
+                      {r.open ? (
+                        <span className="badge badge--green">Clocked in</span>
+                      ) : (
+                        <span className="badge badge--gray">Completed</span>
                       )}
                     </td>
                   </tr>
