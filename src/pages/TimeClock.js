@@ -168,6 +168,13 @@ export default function TimeClock() {
     }
     setEntry(data);
     setMyStatusByName('Active');
+    // Start logging the shift's disposition timeline (begins as Active).
+    const { data: seg } = await supabase
+      .from('time_entry_breaks')
+      .insert({ time_entry_id: data.id, user_id: user.id, kind: 'Active', started_at: new Date().toISOString() })
+      .select()
+      .single();
+    setOpenSeg(seg || null);
     toast.success('Clocked in');
   }
 
@@ -209,30 +216,26 @@ export default function TimeClock() {
     toast.success('Break ended');
   }
 
-  // Set the current disposition (Active / On Break / AFK / Meeting / …). Unpaid
-  // dispositions (is_paid = false, e.g. Break + AFK) open a segment in
-  // time_entry_breaks; every such segment is deducted from paid hours at
-  // clock-out, so multiple breaks/AFK periods all count.
+  // Set the current disposition (Active / On Break / AFK / Meeting / …). Every
+  // change is logged as a segment in time_entry_breaks, so the whole shift is a
+  // complete timeline of what happened — the app records, HR decides what counts.
   async function setDisposition(name) {
     if (!entry || busy) return;
     setBusy(true);
-    const st = statusTypes.find((s) => s.name === name);
-    const unpaid = st ? st.is_paid === false : name === 'On Break' || name === 'AFK';
     const isNoteStatus = NOTE_STATUSES.includes(name.toLowerCase());
 
     await setMyStatusByName(name, isNoteStatus ? note : '');
 
     let seg = openSeg;
-    // Close the current unpaid segment if we're going paid or switching kind.
-    if (seg && (!unpaid || seg.kind !== name)) {
+    // Close the current segment and open one for the new disposition.
+    if (seg && seg.kind !== name) {
       await supabase
         .from('time_entry_breaks')
         .update({ ended_at: new Date().toISOString() })
         .eq('id', seg.id);
       seg = null;
     }
-    // Open a new unpaid segment if we just entered one.
-    if (unpaid && !seg) {
+    if (!seg) {
       const { data } = await supabase
         .from('time_entry_breaks')
         .insert({ time_entry_id: entry.id, user_id: user.id, kind: name, started_at: new Date().toISOString() })
@@ -263,7 +266,7 @@ export default function TimeClock() {
 
     const clockOutAt = new Date();
 
-    // Close any open unpaid segment at clock-out time.
+    // Close the open disposition segment at clock-out time.
     if (openSeg) {
       await supabase
         .from('time_entry_breaks')
@@ -271,27 +274,9 @@ export default function TimeClock() {
         .eq('id', openSeg.id);
     }
 
-    // Sum every unpaid segment this shift (multiple breaks + AFK all deduct).
-    const { data: segs } = await supabase
-      .from('time_entry_breaks')
-      .select('started_at, ended_at')
-      .eq('time_entry_id', entry.id);
-
-    let unpaidMs = 0;
-    (segs || []).forEach((s) => {
-      const end = s.ended_at ? new Date(s.ended_at).getTime() : clockOutAt.getTime();
-      unpaidMs += Math.max(0, end - new Date(s.started_at).getTime());
-    });
-    // Legacy fallback: no segments (presence off) but an old break window exists.
-    if ((!segs || segs.length === 0) && entry.break_start) {
-      const be = entry.break_end || clockOutAt.toISOString();
-      unpaidMs = Math.max(0, new Date(be).getTime() - new Date(entry.break_start).getTime());
-    }
-
-    const totalHours = Math.max(
-      0,
-      (clockOutAt.getTime() - new Date(entry.clock_in).getTime() - unpaidMs) / 3600000
-    );
+    // total_hours = the full on-clock time (gross). We record the disposition
+    // breakdown separately; how much is paid is left to HR.
+    const totalHours = Math.max(0, (clockOutAt.getTime() - new Date(entry.clock_in).getTime()) / 3600000);
 
     const { error } = await supabase
       .from('time_entries')
@@ -328,7 +313,6 @@ export default function TimeClock() {
   }
 
   const onBreak = entry?.status === 'on_break';
-  const onUnpaid = !!openSeg || onBreak;
   const currentDisp = presenceEnabled && myPresence ? statusById(myPresence.status_type_id) : null;
   const dispositions = statusTypes.filter((s) => s.name !== 'Offline');
 
@@ -347,9 +331,7 @@ export default function TimeClock() {
           <div className="card__title">
             Current Status
             {entry ? (
-              <span className={'badge ' + (onUnpaid ? 'badge--amber' : 'badge--green')}>
-                {openSeg ? `On ${openSeg.kind.toLowerCase()}` : onBreak ? 'On break' : 'Clocked in'}
-              </span>
+              <span className="badge badge--green">Clocked in</span>
             ) : (
               <span className="badge badge--gray">Clocked out</span>
             )}
@@ -444,12 +426,6 @@ export default function TimeClock() {
                   <span className="muted">Clock-in location</span>
                   <span>{formatCoords(entry.clock_in_lat, entry.clock_in_lng)}</span>
                 </div>
-                {openSeg && (
-                  <div className="row row--between">
-                    <span className="muted">On {openSeg.kind.toLowerCase()} since</span>
-                    <span>{formatTime(openSeg.started_at)}</span>
-                  </div>
-                )}
               </div>
             </>
           ) : (

@@ -26,6 +26,16 @@ function dateFmt(v) {
   return new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function fmtMins(mins) {
+  if (!mins) return '—';
+  const m = Math.round(mins);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+// Preferred column order for the disposition breakdown.
+const ATT_ORDER = ['Active', 'On Break', 'AFK', 'In Meeting', 'On Call', 'Coaching'];
+
 function downloadCsv(filename, rows) {
   const csv = rows
     .map((r) => r.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
@@ -145,19 +155,35 @@ export default function Reports() {
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const [peopleRes, entriesRes] = await Promise.all([
+      const [peopleRes, entriesRes, segRes] = await Promise.all([
         supabase.from('profiles').select('id, first_name, last_name, email'),
         supabase
           .from('time_entries')
           .select('user_id, clock_in, clock_out, total_hours, status')
           .gte('clock_in', dayStart.toISOString())
           .lt('clock_in', dayEnd.toISOString()),
+        // Disposition timeline segments for the day (breaks, afk, meetings, …).
+        supabase
+          .from('time_entry_breaks')
+          .select('user_id, kind, started_at, ended_at')
+          .gte('started_at', dayStart.toISOString())
+          .lt('started_at', dayEnd.toISOString()),
       ]);
       if (!active) return;
 
       const nameById = {};
       (peopleRes.data || []).forEach((p) => {
         nameById[p.id] = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.email;
+      });
+
+      // Minutes per disposition per user, from the segment log.
+      const now = Date.now();
+      const segMins = {};
+      (segRes.data || []).forEach((s) => {
+        const end = s.ended_at ? new Date(s.ended_at).getTime() : now;
+        const mins = Math.max(0, (end - new Date(s.started_at).getTime()) / 60000);
+        segMins[s.user_id] = segMins[s.user_id] || {};
+        segMins[s.user_id][s.kind] = (segMins[s.user_id][s.kind] || 0) + mins;
       });
 
       const byUser = {};
@@ -188,7 +214,7 @@ export default function Reports() {
       });
 
       const rows = Object.entries(byUser)
-        .map(([id, v]) => ({ id, name: nameById[id] || 'Unknown', ...v }))
+        .map(([id, v]) => ({ id, name: nameById[id] || 'Unknown', mins: segMins[id] || {}, ...v }))
         .sort((a, b) => a.name.localeCompare(b.name));
       setAttRows(rows);
       setAttLoading(false);
@@ -198,13 +224,25 @@ export default function Reports() {
     };
   }, [attDate]);
 
+  // Disposition columns present in the day's data (ordered).
+  const attKinds = useMemo(() => {
+    const set = new Set();
+    attRows.forEach((r) => Object.keys(r.mins || {}).forEach((k) => set.add(k)));
+    return Array.from(set).sort((a, b) => {
+      const ia = ATT_ORDER.indexOf(a);
+      const ib = ATT_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+  }, [attRows]);
+
   function exportAttendanceDay() {
-    const header = ['Employee', 'Clock in', 'Clock out', 'Total hours', 'Status'];
+    const header = ['Employee', 'Clock in', 'Clock out', 'Total hours', ...attKinds, 'Status'];
     const body = attRows.map((r) => [
       r.name,
       clockTime(r.firstIn),
       r.open ? 'Still in' : clockTime(r.lastOut),
       r.hours.toFixed(2),
+      ...attKinds.map((k) => (r.mins?.[k] ? Math.round(r.mins[k]) : 0)),
       r.open ? 'Clocked in' : 'Completed',
     ]);
     downloadCsv(`attendance_${attDate}.csv`, [header, ...body]);
@@ -381,7 +419,7 @@ export default function Reports() {
       {/* Daily clock in / out for all users */}
       <div className="card" style={{ marginTop: 18 }}>
         <div className="card__title" style={{ justifyContent: 'space-between' }}>
-          <span>Daily Attendance — Clock In / Out</span>
+          <span>Daily Attendance — Clock In / Out + Disposition Breakdown</span>
           <div className="row" style={{ gap: 8 }}>
             <input
               type="date"
@@ -400,6 +438,9 @@ export default function Reports() {
             </button>
           </div>
         </div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
+          Total hours is the full on-clock time; the disposition columns record how it was spent.
+        </div>
 
         {attLoading ? (
           <SkeletonList />
@@ -414,6 +455,9 @@ export default function Reports() {
                   <th>Clock in</th>
                   <th>Clock out</th>
                   <th>Total hours</th>
+                  {attKinds.map((k) => (
+                    <th key={k}>{k}</th>
+                  ))}
                   <th>Status</th>
                 </tr>
               </thead>
@@ -424,6 +468,9 @@ export default function Reports() {
                     <td>{clockTime(r.firstIn)}</td>
                     <td>{r.open ? <span className="dim">Still in</span> : clockTime(r.lastOut)}</td>
                     <td>{r.hours > 0 ? `${r.hours.toFixed(2)}h` : r.open ? 'in progress' : '—'}</td>
+                    {attKinds.map((k) => (
+                      <td key={k}>{fmtMins(r.mins?.[k])}</td>
+                    ))}
                     <td>
                       {r.open ? (
                         <span className="badge badge--green">Clocked in</span>
