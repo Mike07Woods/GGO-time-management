@@ -20,6 +20,7 @@ export default function StatusSettings() {
   const [customs, setCustoms] = useState([]); // editable non-system statuses
   const [deleted, setDeleted] = useState([]); // ids removed from the list
   const [limits, setLimits] = useState({}); // status id -> max_minutes (string)
+  const [paidMap, setPaidMap] = useState({}); // status id -> is_paid (bool)
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingStatuses, setSavingStatuses] = useState(false);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -31,8 +32,13 @@ export default function StatusSettings() {
 
   useEffect(() => {
     const m = {};
-    statusTypes.forEach((s) => (m[s.id] = s.max_minutes == null ? '' : String(s.max_minutes)));
+    const pm = {};
+    statusTypes.forEach((s) => {
+      m[s.id] = s.max_minutes == null ? '' : String(s.max_minutes);
+      pm[s.id] = s.is_paid !== false; // default paid
+    });
     setLimits(m);
+    setPaidMap(pm);
   }, [statusTypes]);
 
   useEffect(() => {
@@ -114,8 +120,10 @@ export default function StatusSettings() {
     for (const s of statusTypes) {
       const raw = limits[s.id];
       const next = raw === '' || raw == null ? null : Number(raw);
-      if (next !== (s.max_minutes ?? null)) {
-        await supabase.from('status_types').update({ max_minutes: next }).eq('id', s.id);
+      const nextPaid = paidMap[s.id] !== false;
+      const changed = next !== (s.max_minutes ?? null) || nextPaid !== (s.is_paid !== false);
+      if (changed) {
+        await supabase.from('status_types').update({ max_minutes: next, is_paid: nextPaid }).eq('id', s.id);
       }
     }
     setSavingLimits(false);
@@ -152,16 +160,16 @@ export default function StatusSettings() {
 
       {/* Per-disposition time limits */}
       <div className="card__title" style={{ marginTop: 24 }}>
-        Time limits
+        Time limits &amp; pay
       </div>
       <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
-        Flag a user on the monitor (and notify them) if they stay in a status past this many minutes.
-        Leave blank for no limit.
+        Set a limit (minutes) to flag/notify when a user stays in a status too long — blank = no limit.
+        Tick <strong>Unpaid</strong> to deduct that disposition from worked hours (e.g. Break, AFK).
       </div>
 
       <div className="stack" style={{ gap: 8 }}>
         {statusTypes.map((s) => (
-          <div key={s.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
+          <div key={s.id} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ width: 130, fontSize: 14 }}>
               {s.emoji} {s.name}
             </span>
@@ -170,7 +178,7 @@ export default function StatusSettings() {
               className="input"
               min={1}
               max={480}
-              style={{ maxWidth: 120 }}
+              style={{ maxWidth: 110 }}
               placeholder="No limit"
               value={limits[s.id] ?? ''}
               onChange={(e) => setLimits((m) => ({ ...m, [s.id]: e.target.value }))}
@@ -178,6 +186,16 @@ export default function StatusSettings() {
             <span className="dim" style={{ fontSize: 12 }}>
               minutes
             </span>
+            <label
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={paidMap[s.id] === false}
+                onChange={(e) => setPaidMap((m) => ({ ...m, [s.id]: !e.target.checked }))}
+              />
+              Unpaid
+            </label>
           </div>
         ))}
       </div>

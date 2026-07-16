@@ -10,7 +10,6 @@ import { useToast } from '../context/ToastContext';
 import { usePresence } from '../context/PresenceContext';
 import { Clock } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { computeTotalHours } from '../lib/time';
 import { SkeletonList } from '../components/Skeleton';
 
 // Promisified geolocation lookup. Resolves to { lat, lng } or rejects with a message.
@@ -75,6 +74,7 @@ export default function TimeClock() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [note, setNote] = useState(''); // note for meeting/coaching dispositions
+  const [openSeg, setOpenSeg] = useState(null); // current open unpaid break/afk segment
 
   // Keep the note field in sync with the server value.
   useEffect(() => {
@@ -108,8 +108,27 @@ export default function TimeClock() {
         .limit(10),
     ]);
 
-    setEntry(openRes.data || null);
+    const open = openRes.data || null;
+    setEntry(open);
     setHistory(histRes.data || []);
+
+    // Find any unpaid segment left open (e.g. after a page refresh mid-break) and
+    // re-assert the matching disposition so presence + payroll stay in sync.
+    if (open) {
+      const segRes = await supabase
+        .from('time_entry_breaks')
+        .select('*')
+        .eq('time_entry_id', open.id)
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const seg = segRes.data || null;
+      setOpenSeg(seg);
+      if (seg?.kind) setMyStatusByName(seg.kind);
+    } else {
+      setOpenSeg(null);
+    }
     setLoading(false);
   }
 
@@ -190,35 +209,38 @@ export default function TimeClock() {
     toast.success('Break ended');
   }
 
-  // Set the current disposition (Active / On Break / AFK / Meeting / …). The
-  // "On Break" disposition also drives the time_entries break window so paid
-  // hours stay accurate; other dispositions are tracked as presence only.
+  // Set the current disposition (Active / On Break / AFK / Meeting / …). Unpaid
+  // dispositions (is_paid = false, e.g. Break + AFK) open a segment in
+  // time_entry_breaks; every such segment is deducted from paid hours at
+  // clock-out, so multiple breaks/AFK periods all count.
   async function setDisposition(name) {
     if (!entry || busy) return;
     setBusy(true);
-    const wasOnBreak = entry.status === 'on_break';
-    const goingOnBreak = name === 'On Break';
+    const st = statusTypes.find((s) => s.name === name);
+    const unpaid = st ? st.is_paid === false : name === 'On Break' || name === 'AFK';
     const isNoteStatus = NOTE_STATUSES.includes(name.toLowerCase());
 
     await setMyStatusByName(name, isNoteStatus ? note : '');
 
-    if (goingOnBreak && !wasOnBreak) {
-      const { data } = await supabase
-        .from('time_entries')
-        .update({ status: 'on_break', break_start: new Date().toISOString() })
-        .eq('id', entry.id)
-        .select()
-        .single();
-      if (data) setEntry(data);
-    } else if (!goingOnBreak && wasOnBreak) {
-      const { data } = await supabase
-        .from('time_entries')
-        .update({ status: 'active', break_end: new Date().toISOString() })
-        .eq('id', entry.id)
-        .select()
-        .single();
-      if (data) setEntry(data);
+    let seg = openSeg;
+    // Close the current unpaid segment if we're going paid or switching kind.
+    if (seg && (!unpaid || seg.kind !== name)) {
+      await supabase
+        .from('time_entry_breaks')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('id', seg.id);
+      seg = null;
     }
+    // Open a new unpaid segment if we just entered one.
+    if (unpaid && !seg) {
+      const { data } = await supabase
+        .from('time_entry_breaks')
+        .insert({ time_entry_id: entry.id, user_id: user.id, kind: name, started_at: new Date().toISOString() })
+        .select()
+        .single();
+      seg = data || null;
+    }
+    setOpenSeg(seg);
     setBusy(false);
   }
 
@@ -240,11 +262,36 @@ export default function TimeClock() {
     }
 
     const clockOutAt = new Date();
-    // If they clock out while still On Break, close the break at clock-out time
-    // so those minutes are deducted from paid hours.
-    const breakEnd =
-      entry.status === 'on_break' && !entry.break_end ? clockOutAt.toISOString() : entry.break_end;
-    const totalHours = computeTotalHours(entry.clock_in, clockOutAt, entry.break_start, breakEnd);
+
+    // Close any open unpaid segment at clock-out time.
+    if (openSeg) {
+      await supabase
+        .from('time_entry_breaks')
+        .update({ ended_at: clockOutAt.toISOString() })
+        .eq('id', openSeg.id);
+    }
+
+    // Sum every unpaid segment this shift (multiple breaks + AFK all deduct).
+    const { data: segs } = await supabase
+      .from('time_entry_breaks')
+      .select('started_at, ended_at')
+      .eq('time_entry_id', entry.id);
+
+    let unpaidMs = 0;
+    (segs || []).forEach((s) => {
+      const end = s.ended_at ? new Date(s.ended_at).getTime() : clockOutAt.getTime();
+      unpaidMs += Math.max(0, end - new Date(s.started_at).getTime());
+    });
+    // Legacy fallback: no segments (presence off) but an old break window exists.
+    if ((!segs || segs.length === 0) && entry.break_start) {
+      const be = entry.break_end || clockOutAt.toISOString();
+      unpaidMs = Math.max(0, new Date(be).getTime() - new Date(entry.break_start).getTime());
+    }
+
+    const totalHours = Math.max(
+      0,
+      (clockOutAt.getTime() - new Date(entry.clock_in).getTime() - unpaidMs) / 3600000
+    );
 
     const { error } = await supabase
       .from('time_entries')
@@ -252,7 +299,6 @@ export default function TimeClock() {
         clock_out: clockOutAt.toISOString(),
         clock_out_lat: coords.lat,
         clock_out_lng: coords.lng,
-        break_end: breakEnd,
         total_hours: Number(totalHours.toFixed(2)),
         status: 'completed',
       })
@@ -264,6 +310,7 @@ export default function TimeClock() {
       return;
     }
     setEntry(null);
+    setOpenSeg(null);
     setMyStatusByName('Offline');
     loadState();
     toast.success(`Clocked out — ${totalHours.toFixed(2)} h logged`);
@@ -281,6 +328,7 @@ export default function TimeClock() {
   }
 
   const onBreak = entry?.status === 'on_break';
+  const onUnpaid = !!openSeg || onBreak;
   const currentDisp = presenceEnabled && myPresence ? statusById(myPresence.status_type_id) : null;
   const dispositions = statusTypes.filter((s) => s.name !== 'Offline');
 
@@ -299,8 +347,8 @@ export default function TimeClock() {
           <div className="card__title">
             Current Status
             {entry ? (
-              <span className={'badge ' + (onBreak ? 'badge--amber' : 'badge--green')}>
-                {onBreak ? 'On break' : 'Clocked in'}
+              <span className={'badge ' + (onUnpaid ? 'badge--amber' : 'badge--green')}>
+                {openSeg ? `On ${openSeg.kind.toLowerCase()}` : onBreak ? 'On break' : 'Clocked in'}
               </span>
             ) : (
               <span className="badge badge--gray">Clocked out</span>
@@ -396,10 +444,10 @@ export default function TimeClock() {
                   <span className="muted">Clock-in location</span>
                   <span>{formatCoords(entry.clock_in_lat, entry.clock_in_lng)}</span>
                 </div>
-                {entry.break_start && (
+                {openSeg && (
                   <div className="row row--between">
-                    <span className="muted">Last break started</span>
-                    <span>{formatTime(entry.break_start)}</span>
+                    <span className="muted">On {openSeg.kind.toLowerCase()} since</span>
+                    <span>{formatTime(openSeg.started_at)}</span>
                   </div>
                 )}
               </div>

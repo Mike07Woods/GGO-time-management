@@ -190,6 +190,35 @@ insert into public.status_types (name, color, emoji, is_afk, is_system, sort_ord
 select 'Coaching', '#EC4899', '🎯', false, false, 7
 where not exists (select 1 from public.status_types where name = 'Coaching');
 
+-- ----------------------------------------------------------------------------
+-- Payroll: which dispositions are UNPAID (deducted from worked hours), and a
+-- per-shift log of unpaid segments so MULTIPLE breaks/AFK periods all deduct
+-- (time_entries only has a single break_start/break_end pair).
+-- ----------------------------------------------------------------------------
+alter table public.status_types add column if not exists is_paid boolean default true;
+update public.status_types set is_paid = false
+  where name in ('On Break', 'AFK') and is_paid is distinct from false;
+
+create table if not exists public.time_entry_breaks (
+  id            uuid default gen_random_uuid() primary key,
+  time_entry_id uuid references public.time_entries (id) on delete cascade,
+  user_id       uuid references public.profiles (id) on delete cascade,
+  kind          text,                    -- disposition name (On Break, AFK, …)
+  started_at    timestamptz default now(),
+  ended_at      timestamptz
+);
+create index if not exists idx_teb_entry on public.time_entry_breaks (time_entry_id);
+
+alter table public.time_entry_breaks enable row level security;
+
+drop policy if exists teb_select on public.time_entry_breaks;
+create policy teb_select on public.time_entry_breaks for select to authenticated
+  using (user_id = auth.uid() or public.is_manager());
+
+drop policy if exists teb_own on public.time_entry_breaks;
+create policy teb_own on public.time_entry_breaks for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
 -- Remembers which status-instance (by its updated_at) we've already alerted on,
 -- so managers are notified once per overrun — not every minute.
 alter table public.user_presence add column if not exists overrun_alerted_for timestamptz;
