@@ -112,8 +112,8 @@ export default function TimeClock() {
     setEntry(open);
     setHistory(histRes.data || []);
 
-    // Find any unpaid segment left open (e.g. after a page refresh mid-break) and
-    // re-assert the matching disposition so presence + payroll stay in sync.
+    // Track any disposition segment still open (presence itself is preserved
+    // across refreshes by the PresenceProvider, so no re-assert needed here).
     if (open) {
       const segRes = await supabase
         .from('time_entry_breaks')
@@ -123,9 +123,7 @@ export default function TimeClock() {
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const seg = segRes.data || null;
-      setOpenSeg(seg);
-      if (seg?.kind) setMyStatusByName(seg.kind);
+      setOpenSeg(segRes.data || null);
     } else {
       setOpenSeg(null);
     }

@@ -130,14 +130,31 @@ export function PresenceProvider({ children }) {
       if (settingsRes.data) setSettings(settingsRes.data);
       setEnabled(true);
 
+      // Preserve an existing disposition across page refreshes. Only set Active
+      // when they have no presence row yet or are currently Offline (i.e. coming
+      // online fresh) — otherwise just refresh last_active_at so a break/meeting
+      // isn't clobbered back to Active on reload.
       const active = types.find((t) => t.name === 'Active');
-      if (active) {
+      const offline = types.find((t) => t.name === 'Offline');
+      const { data: mine } = await supabase
+        .from('user_presence')
+        .select('status_type_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+
+      const comingOnline = !mine || !mine.status_type_id || mine.status_type_id === offline?.id;
+      const nowIso = new Date().toISOString();
+      if (comingOnline && active) {
         await supabase
           .from('user_presence')
           .upsert(
-            { user_id: user.id, status_type_id: active.id, last_active_at: new Date().toISOString(), afk_at: null, updated_at: new Date().toISOString() },
+            { user_id: user.id, status_type_id: active.id, last_active_at: nowIso, afk_at: null, updated_at: nowIso },
             { onConflict: 'user_id' }
           );
+      } else {
+        // Keep their current status; just mark them freshly active (not stale).
+        await supabase.from('user_presence').update({ last_active_at: nowIso }).eq('user_id', user.id);
       }
       fetchAllPresence();
     })();
