@@ -19,6 +19,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { supabase } from '../supabaseClient';
 import Skeleton from '../components/Skeleton';
+import PushPrompt from '../components/PushPrompt';
 
 const TONES = {
   blue: { bg: 'var(--accent-light)', fg: 'var(--accent-text)' },
@@ -182,6 +183,8 @@ export default function Dashboard() {
   return (
     <div>
       <style>{`.dash-shifts .table td { height: 44px; }`}</style>
+
+      <PushPrompt />
 
       {/* Greeting */}
       <div

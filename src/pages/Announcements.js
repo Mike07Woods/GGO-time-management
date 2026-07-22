@@ -10,6 +10,7 @@ import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { Megaphone } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { sendPush } from '../lib/pushNotifications';
 import { SkeletonList } from '../components/Skeleton';
 
 const TARGET_OPTIONS = [
@@ -141,6 +142,19 @@ export default function Announcements() {
     setAnnouncements((prev) => [data, ...prev]);
     setForm({ title: '', body: '', target_role: '' });
     toast.success('Announcement posted');
+
+    // Best-effort push to everyone it targets (except the poster).
+    let pq = supabase.from('profiles').select('id').eq('is_active', true);
+    if (data.target_role) pq = pq.eq('role', data.target_role);
+    const { data: people } = await pq;
+    sendPush(supabase, {
+      user_ids: (people || []).map((p) => p.id).filter((id) => id !== user.id),
+      title: 'New Announcement',
+      body: data.title,
+      url: '/announcements',
+      tag: 'announcement',
+      pref: 'announcements',
+    });
   }
 
   const unreadCount = useMemo(

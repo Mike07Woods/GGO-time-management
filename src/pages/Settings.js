@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import { Cog } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import StatusSettings from '../components/StatusSettings';
+import NotificationPreferences from '../components/NotificationPreferences';
 
 export default function Settings() {
   const { user, profile, refreshProfile } = useAuth();
@@ -290,6 +291,9 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Push notification preferences (role-aware) */}
+      <NotificationPreferences />
 
       {/* Live-status configuration (owner/admin only; self-gates) */}
       <StatusSettings />

@@ -13,6 +13,7 @@ import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { usePresence } from '../context/PresenceContext';
 import { supabase } from '../supabaseClient';
+import { sendPush } from '../lib/pushNotifications';
 import Skeleton from '../components/Skeleton';
 
 // Grid ordering: online statuses first, Offline last.
@@ -222,6 +223,16 @@ export default function TeamStatus() {
       return;
     }
     setMyPings((prev) => ({ ...prev, [pingTarget.id]: Date.now() }));
+    // Best-effort push to the target's devices.
+    const senderName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user.email;
+    sendPush(supabase, {
+      user_ids: [pingTarget.id],
+      title: 'You’ve been pinged',
+      body: `${senderName}${pingMsg.trim() ? ': ' + pingMsg.trim() : ''}`,
+      url: '/team-status',
+      tag: 'ping',
+      pref: 'pings',
+    });
     toast.success(`Ping sent to ${fullName(pingTarget)}`);
     setPingTarget(null);
     setPingMsg('');

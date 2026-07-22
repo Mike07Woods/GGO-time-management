@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { MessageSquare } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { sendPush } from '../lib/pushNotifications';
 
 function initials(name) {
   if (!name) return '?';
@@ -192,6 +193,20 @@ export default function Chat() {
     }
     // Optimistic append (realtime will dedupe by id).
     setMessages((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
+
+    // Best-effort push to the other channel members.
+    const channel = channels.find((c) => c.id === activeId);
+    const recipients = (channel?.members || []).filter((id) => id !== user.id);
+    if (recipients.length) {
+      sendPush(supabase, {
+        user_ids: recipients,
+        title: channel ? channelLabel(channel) : 'Team Chat',
+        body: `${nameById[user.id] || 'Someone'}: ${content.slice(0, 60)}`,
+        url: '/chat',
+        tag: `chat-${activeId}`,
+        pref: 'chat_messages',
+      });
+    }
   }
 
   // Start (or reuse) a direct channel with another person.
