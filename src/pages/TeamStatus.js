@@ -62,6 +62,10 @@ function clockTime(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
+function segMins(s) {
+  const end = s.ended_at ? new Date(s.ended_at).getTime() : Date.now();
+  return Math.max(0, (end - new Date(s.started_at).getTime()) / 60000);
+}
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
   return s || (p.email?.[0]?.toUpperCase() ?? '?');
@@ -81,6 +85,8 @@ export default function TeamStatus() {
   const [loading, setLoading] = useState(true);
   const [myPings, setMyPings] = useState({}); // to_user_id -> last ping ms
   const [clockInfo, setClockInfo] = useState({}); // user_id -> today's clock in/out
+  const [timeline, setTimeline] = useState({}); // user_id -> today's disposition segments
+  const [expandedId, setExpandedId] = useState(null); // card whose timeline is open
   const [statusFilter, setStatusFilter] = useState('all');
   // Managers are locked to their own department; admins/owners default to "all".
   const [deptFilter, setDeptFilter] = useState('all');
@@ -165,6 +171,29 @@ export default function TeamStatus() {
     const t = setInterval(() => setTick((x) => x + 1), 30000);
     return () => clearInterval(t);
   }, []);
+
+  // Today's disposition segments per user (for the expandable per-card timeline).
+  const loadTimeline = useCallback(async () => {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const { data } = await supabase
+      .from('time_entry_breaks')
+      .select('id, user_id, kind, started_at, ended_at')
+      .gte('started_at', dayStart.toISOString())
+      .order('started_at', { ascending: true });
+    const map = {};
+    (data || []).forEach((s) => {
+      (map[s.user_id] = map[s.user_id] || []).push(s);
+    });
+    setTimeline(map);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    loadTimeline();
+    const t = setInterval(loadTimeline, 60000);
+    return () => clearInterval(t);
+  }, [enabled, loadTimeline]);
 
   // Resolve the live (stale-aware) status object for a person.
   const statusOf = useCallback((p) => getStatus(p.id), [getStatus]);
@@ -337,6 +366,10 @@ export default function TeamStatus() {
         .ts-ago { font-size:11px; color: var(--text-muted); margin-top:3px; }
         .ts-ping { position:absolute; top:0; right:0; }
         .ts-statusline { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:3px; }
+        .ts-tl-toggle { margin-top:6px; background:none; border:none; padding:0; color:var(--accent-text); font-size:12px; font-weight:600; cursor:pointer; }
+        .ts-timeline { margin-top:6px; border-top:1px dashed var(--border); padding-top:6px; display:flex; flex-direction:column; gap:4px; }
+        .ts-tl-row { display:flex; justify-content:space-between; gap:8px; font-size:12px; }
+        .ts-tl-row .dim { white-space:nowrap; }
       `}</style>
 
       <div className="page-header">
@@ -504,6 +537,36 @@ export default function TeamStatus() {
                     <div className="ts-ago">
                       In {clockTime(ci.firstIn)} · Out {ci.open ? '—' : clockTime(ci.lastOut)}
                     </div>
+                  )}
+
+                  {/* Expandable "today's timeline" */}
+                  {timeline[p.id]?.length > 0 && (
+                    <>
+                      <button
+                        className="ts-tl-toggle"
+                        onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                      >
+                        {expandedId === p.id ? '▾ Hide timeline' : `▸ Timeline (${timeline[p.id].length})`}
+                      </button>
+                      {expandedId === p.id && (
+                        <div className="ts-timeline">
+                          {timeline[p.id].map((s) => {
+                            const em = statusTypes.find((t) => t.name === s.kind)?.emoji || '';
+                            return (
+                              <div key={s.id} className="ts-tl-row">
+                                <span>
+                                  {em} {s.kind}
+                                </span>
+                                <span className="dim">
+                                  {clockTime(s.started_at)}–{s.ended_at ? clockTime(s.ended_at) : 'now'} ·{' '}
+                                  {fmtMins(segMins(s))}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
