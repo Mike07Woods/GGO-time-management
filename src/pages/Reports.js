@@ -36,6 +36,12 @@ function fmtMins(mins) {
 // Preferred column order for the disposition breakdown.
 const ATT_ORDER = ['Active', 'On Break', 'AFK', 'In Meeting', 'On Call', 'Coaching'];
 
+// Minutes a segment lasted (ongoing segments run to "now").
+function segMinutes(r) {
+  const end = r.ended_at ? new Date(r.ended_at).getTime() : Date.now();
+  return Math.max(0, (end - new Date(r.started_at).getTime()) / 60000);
+}
+
 function downloadCsv(filename, rows) {
   const csv = rows
     .map((r) => r.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
@@ -72,6 +78,7 @@ export default function Reports() {
   const [attDate, setAttDate] = useState(ymd(new Date()));
   const [attRows, setAttRows] = useState([]);
   const [attLoading, setAttLoading] = useState(true);
+  const [dispLog, setDispLog] = useState([]); // per-segment timeline for the day
 
   // Attendance log across the top date range (one row per clock-in).
   const [logRows, setLogRows] = useState([]);
@@ -165,9 +172,10 @@ export default function Reports() {
         // Disposition timeline segments for the day (breaks, afk, meetings, …).
         supabase
           .from('time_entry_breaks')
-          .select('user_id, kind, started_at, ended_at')
+          .select('id, user_id, kind, started_at, ended_at')
           .gte('started_at', dayStart.toISOString())
-          .lt('started_at', dayEnd.toISOString()),
+          .lt('started_at', dayEnd.toISOString())
+          .order('started_at', { ascending: true }),
       ]);
       if (!active) return;
 
@@ -185,6 +193,21 @@ export default function Reports() {
         segMins[s.user_id] = segMins[s.user_id] || {};
         segMins[s.user_id][s.kind] = (segMins[s.user_id][s.kind] || 0) + mins;
       });
+
+      // Per-segment timeline: exactly when each disposition started and ended.
+      const log = (segRes.data || [])
+        .map((s) => ({
+          id: s.id,
+          name: nameById[s.user_id] || 'Unknown',
+          kind: s.kind,
+          started_at: s.started_at,
+          ended_at: s.ended_at,
+        }))
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name) || new Date(a.started_at) - new Date(b.started_at)
+        );
+      setDispLog(log);
 
       const byUser = {};
       (entriesRes.data || []).forEach((e) => {
@@ -246,6 +269,18 @@ export default function Reports() {
       r.open ? 'Clocked in' : 'Completed',
     ]);
     downloadCsv(`attendance_${attDate}.csv`, [header, ...body]);
+  }
+
+  function exportDispLog() {
+    const header = ['Employee', 'Disposition', 'Started', 'Ended', 'Duration'];
+    const body = dispLog.map((r) => [
+      r.name,
+      r.kind,
+      clockTime(r.started_at),
+      r.ended_at ? clockTime(r.ended_at) : 'ongoing',
+      fmtMins(segMinutes(r)),
+    ]);
+    downloadCsv(`disposition_timeline_${attDate}.csv`, [header, ...body]);
   }
 
   // Load one row per clock-in across the top [start, end] range.
@@ -478,6 +513,50 @@ export default function Reports() {
                         <span className="badge badge--gray">Completed</span>
                       )}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Disposition timeline — when each disposition started/ended (selected day) */}
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="card__title" style={{ justifyContent: 'space-between' }}>
+          <span>Disposition Timeline — {attDate}</span>
+          <button className="btn btn--ghost btn--sm" onClick={exportDispLog} disabled={dispLog.length === 0}>
+            ⬇ CSV
+          </button>
+        </div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
+          Every disposition change on the day selected above — exactly when it started and ended.
+        </div>
+
+        {attLoading ? (
+          <SkeletonList />
+        ) : dispLog.length === 0 ? (
+          <div className="empty-state">No disposition activity on this day.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Disposition</th>
+                  <th>Started</th>
+                  <th>Ended</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dispLog.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    <td>{r.kind}</td>
+                    <td>{clockTime(r.started_at)}</td>
+                    <td>{r.ended_at ? clockTime(r.ended_at) : <span className="badge badge--green">ongoing</span>}</td>
+                    <td>{fmtMins(segMinutes(r))}</td>
                   </tr>
                 ))}
               </tbody>
