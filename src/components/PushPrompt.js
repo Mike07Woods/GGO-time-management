@@ -4,7 +4,7 @@
 // the last 7 days (localStorage: push_dismissed_at).
 
 import React, { useState } from 'react';
-import { Bell, X } from 'lucide-react';
+import { Bell, X, Share } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
@@ -17,6 +17,21 @@ import {
 
 const DISMISS_KEY = 'push_dismissed_at';
 const WEEK_MS = 7 * 24 * 3600 * 1000;
+
+// iOS/iPadOS detection (iPadOS reports a Mac UA but has touch).
+function isIOS() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /iphone|ipad|ipod/i.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
+}
+
+// Running as an installed PWA (standalone), where iOS allows web push.
+function isStandalone() {
+  return (
+    window.navigator.standalone === true ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+  );
+}
 
 export default function PushPrompt() {
   const { user } = useAuth();
@@ -31,6 +46,33 @@ export default function PushPrompt() {
   });
 
   if (hidden || !user) return null;
+
+  // iOS in a Safari tab can't do web push at all — it must be installed to the
+  // Home Screen first. Show install instructions instead of an Enable button.
+  const iosNeedsInstall = isIOS() && !isStandalone();
+  if (iosNeedsInstall) {
+    return (
+      <div className="push-banner">
+        <Share size={18} style={{ flexShrink: 0, color: 'var(--accent-text)' }} />
+        <span style={{ flex: 1 }}>
+          On iPhone/iPad, tap <strong>Share</strong> then <strong>“Add to Home Screen”</strong>, open GGO
+          from its icon, and you’ll be able to turn on notifications.
+        </span>
+        <button className="btn--icon" onClick={dismiss} aria-label="Dismiss">
+          <X size={15} />
+        </button>
+        <style>{`
+          .push-banner {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: var(--accent-light); border: 1px solid var(--border);
+            color: var(--text-primary); padding: 10px 14px;
+            border-radius: var(--radius-md); margin-bottom: 16px; font-size: 14px;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   if (!pushSupported() || !pushConfigured()) return null;
   if (pushPermission() === 'granted' || pushPermission() === 'denied') return null;
 
