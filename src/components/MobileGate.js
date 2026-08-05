@@ -18,10 +18,10 @@ function isPhone() {
 
 export default function MobileGate({ children }) {
   const { profile, signOut } = useAuth();
-  const { isManager } = useRole();
+  const { isOwner } = useRole();
 
-  // Managers+ always allowed; everyone else needs the explicit flag.
-  const allowed = isManager || profile?.mobile_access === true;
+  // The owner always has phone access; everyone else needs the explicit flag.
+  const allowed = isOwner || profile?.mobile_access === true;
 
   if (!isPhone() || allowed) return children;
 

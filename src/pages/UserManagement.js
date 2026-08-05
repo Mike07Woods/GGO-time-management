@@ -223,8 +223,12 @@ export default function UserManagement() {
                         )}
                       </td>
                       <td>
-                        {/* Managers+ always have phone access; toggle applies to employees. */}
-                        {p.role === 'user' ? (
+                        {/* Owner always has phone access; toggle applies to everyone else. */}
+                        {isOwner ? (
+                          <span className="dim" title="The owner always has phone access">
+                            Always
+                          </span>
+                        ) : (
                           <button
                             className={'btn btn--sm ' + (p.mobile_access ? 'btn--primary' : 'btn--ghost')}
                             disabled={busy}
@@ -233,10 +237,6 @@ export default function UserManagement() {
                           >
                             {p.mobile_access ? 'On' : 'Off'}
                           </button>
-                        ) : (
-                          <span className="dim" title="Managers, admins and owners always have phone access">
-                            Always
-                          </span>
                         )}
                       </td>
                       <td>
