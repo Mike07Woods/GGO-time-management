@@ -25,7 +25,6 @@ export function PresenceProvider({ children }) {
   });
   const [enabled, setEnabled] = useState(false); // true once the tables are reachable
 
-  const offlineIdRef = useRef(null);
   const myStatusIdRef = useRef(null);
   const myUpdatedAtRef = useRef(null); // when I entered my current status
   const statusTypesRef = useRef([]);
@@ -33,7 +32,6 @@ export function PresenceProvider({ children }) {
 
   // Keep refs in sync.
   useEffect(() => {
-    offlineIdRef.current = statusTypes.find((t) => t.name === 'Offline')?.id || null;
     statusTypesRef.current = statusTypes;
   }, [statusTypes]);
 
@@ -204,23 +202,11 @@ export function PresenceProvider({ children }) {
     return () => supabase.removeChannel(channel);
   }, [enabled, user, fetchAllPresence]);
 
-  // --- Set Offline on tab close / unmount ---
-  useEffect(() => {
-    if (!enabled || !user) return undefined;
-    const goOffline = () => {
-      if (offlineIdRef.current) {
-        supabase
-          .from('user_presence')
-          .update({ status_type_id: offlineIdRef.current, updated_at: new Date().toISOString() })
-          .eq('user_id', user.id);
-      }
-    };
-    window.addEventListener('beforeunload', goOffline);
-    return () => {
-      window.removeEventListener('beforeunload', goOffline);
-      goOffline();
-    };
-  }, [enabled, user]);
+  // NOTE: we deliberately do NOT write "Offline" on tab close / unmount. That
+  // handler also fired on a normal refresh (beforeunload), so a user on Break
+  // would be flipped to Offline and then back to Active by the next mount. A
+  // closed tab now simply stops heartbeating and getStatus() shows it Offline
+  // after `staleMinutes`; clock-out still sets Offline explicitly.
 
   const value = {
     enabled,
