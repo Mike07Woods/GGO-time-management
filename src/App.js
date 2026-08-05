@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import ChatPopup from './components/ChatPopup';
 import LoadingScreen from './components/LoadingScreen';
+import MobileGate from './components/MobileGate';
 import { PresenceProvider } from './context/PresenceContext';
 
 import Login from './pages/Login';
@@ -46,9 +47,11 @@ import Settings from './pages/Settings';
 function ProtectedLayout() {
   return (
     <ProtectedRoute>
-      <PresenceProvider>
-        <ShellWithSidebar />
-      </PresenceProvider>
+      <MobileGate>
+        <PresenceProvider>
+          <ShellWithSidebar />
+        </PresenceProvider>
+      </MobileGate>
     </ProtectedRoute>
   );
 }

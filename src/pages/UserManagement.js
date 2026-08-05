@@ -51,7 +51,7 @@ export default function UserManagement() {
     const [peopleRes, deptRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, first_name, last_name, email, role, is_active, department_id')
+        .select('id, first_name, last_name, email, role, is_active, department_id, mobile_access')
         .eq('is_active', true)
         .order('first_name', { ascending: true }),
       // departments may not exist until the migration is run — fail quietly.
@@ -96,6 +96,11 @@ export default function UserManagement() {
 
   function changeDepartment(person, deptId) {
     patchProfile(person, { department_id: deptId || null }, 'Department updated');
+  }
+
+  function toggleMobile(person) {
+    const next = !person.mobile_access;
+    patchProfile(person, { mobile_access: next }, next ? 'Phone access enabled' : 'Phone access disabled');
   }
 
   async function removeUser(person) {
@@ -150,6 +155,7 @@ export default function UserManagement() {
                   <th>Email</th>
                   <th>Role</th>
                   <th>Department</th>
+                  <th>Mobile</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -214,6 +220,23 @@ export default function UserManagement() {
                               </option>
                             ))}
                           </select>
+                        )}
+                      </td>
+                      <td>
+                        {/* Managers+ always have phone access; toggle applies to employees. */}
+                        {p.role === 'user' ? (
+                          <button
+                            className={'btn btn--sm ' + (p.mobile_access ? 'btn--primary' : 'btn--ghost')}
+                            disabled={busy}
+                            title={p.mobile_access ? 'Phone access ON — click to disable' : 'Phone access OFF — click to enable'}
+                            onClick={() => toggleMobile(p)}
+                          >
+                            {p.mobile_access ? 'On' : 'Off'}
+                          </button>
+                        ) : (
+                          <span className="dim" title="Managers, admins and owners always have phone access">
+                            Always
+                          </span>
                         )}
                       </td>
                       <td>

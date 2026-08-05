@@ -46,15 +46,6 @@ function formatCoords(lat, lng) {
 // Dispositions that prompt for a note (what the meeting/coaching is about).
 const NOTE_STATUSES = ['in meeting', 'coaching'];
 
-// Live "how long in this disposition" — e.g. "12m" / "1h 05m".
-function durationSince(iso) {
-  if (!iso) return '';
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m`;
-  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
-}
-
 export default function TimeClock() {
   const { user } = useAuth();
   const toast = useToast();
@@ -300,15 +291,19 @@ export default function TimeClock() {
   }
 
   // Live elapsed time since clock-in (HH:MM:SS).
-  function elapsed() {
-    if (!entry?.clock_in) return '00:00:00';
-    const ms = now - new Date(entry.clock_in).getTime();
-    const total = Math.max(0, Math.floor(ms / 1000));
+  function hms(fromIso) {
+    if (!fromIso) return '00:00:00';
+    const total = Math.max(0, Math.floor((now - new Date(fromIso).getTime()) / 1000));
     const h = String(Math.floor(total / 3600)).padStart(2, '0');
     const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
     const s = String(total % 60).padStart(2, '0');
     return `${h}:${m}:${s}`;
   }
+  // Total shift time since clock-in.
+  const elapsed = () => hms(entry?.clock_in);
+  // Time in the CURRENT disposition (resets each time they switch). Uses the
+  // open segment's start so it survives refreshes.
+  const dispElapsed = () => hms(openSeg?.started_at || entry?.clock_in);
 
   const onBreak = entry?.status === 'on_break';
   const currentDisp = presenceEnabled && myPresence ? statusById(myPresence.status_type_id) : null;
@@ -339,25 +334,21 @@ export default function TimeClock() {
             <SkeletonList rows={2} />
           ) : entry ? (
             <>
-              {/* Shift timer */}
-              <div style={{ textAlign: 'center', padding: '6px 0 12px' }}>
-                <div style={{ fontSize: 40, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
-                  {elapsed()}
-                </div>
-                <div className="dim">since clock-in at {formatTime(entry.clock_in)}</div>
-              </div>
-
-              {/* Current disposition + live duration */}
-              {currentDisp && (
-                <div style={{ textAlign: 'center', marginBottom: 14 }}>
-                  <span style={{ color: currentDisp.color, fontWeight: 700 }}>
+              {/* Current-disposition timer (resets each time they switch) */}
+              <div style={{ textAlign: 'center', padding: '6px 0 14px' }}>
+                {currentDisp && (
+                  <div style={{ fontWeight: 700, color: currentDisp.color, marginBottom: 2 }}>
                     {currentDisp.emoji} {currentDisp.name}
-                  </span>
-                  {myPresence?.updated_at && (
-                    <span className="dim"> · for {durationSince(myPresence.updated_at)}</span>
-                  )}
+                  </div>
+                )}
+                <div style={{ fontSize: 40, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                  {dispElapsed()}
                 </div>
-              )}
+                <div className="dim" style={{ fontSize: 12 }}>on this disposition</div>
+                <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
+                  Shift total {elapsed()} · since {formatTime(entry.clock_in)}
+                </div>
+              </div>
 
               {/* Disposition controls (fallback to a simple break toggle if
                   live presence isn't set up yet) */}
