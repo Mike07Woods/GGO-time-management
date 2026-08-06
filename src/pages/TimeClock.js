@@ -4,7 +4,7 @@
 //   Break     -> toggle 'on_break' / 'active' with break_start / break_end
 //   Clock out -> capture GPS, compute total_hours, mark 'completed'
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { usePresence } from '../context/PresenceContext';
@@ -46,6 +46,18 @@ function formatCoords(lat, lng) {
 // Dispositions that prompt for a note (what the meeting/coaching is about).
 const NOTE_STATUSES = ['in meeting', 'coaching'];
 
+// Just the time (e.g. 9:03 AM).
+function hmTime(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+// Duration of a segment (ongoing runs to nowMs).
+function durMin(seg, nowMs) {
+  const end = seg.ended_at ? new Date(seg.ended_at).getTime() : nowMs;
+  const m = Math.max(0, Math.round((end - new Date(seg.started_at).getTime()) / 60000));
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
 export default function TimeClock() {
   const { user } = useAuth();
   const toast = useToast();
@@ -66,6 +78,25 @@ export default function TimeClock() {
   const [now, setNow] = useState(Date.now());
   const [note, setNote] = useState(''); // note for meeting/coaching dispositions
   const [openSeg, setOpenSeg] = useState(null); // current open unpaid break/afk segment
+  const [todaySegs, setTodaySegs] = useState([]); // my disposition segments today
+
+  // My disposition timeline for today (most recent first).
+  const loadToday = useCallback(async () => {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const { data } = await supabase
+      .from('time_entry_breaks')
+      .select('id, kind, started_at, ended_at')
+      .eq('user_id', user.id)
+      .gte('started_at', dayStart.toISOString())
+      .order('started_at', { ascending: false });
+    setTodaySegs(data || []);
+  }, [user.id]);
+
+  // Refresh the timeline whenever the shift or current disposition changes.
+  useEffect(() => {
+    loadToday();
+  }, [loadToday, entry, openSeg]);
 
   // Keep the note field in sync with the server value.
   useEffect(() => {
@@ -427,33 +458,70 @@ export default function TimeClock() {
           )}
         </div>
 
-        {/* Recent history */}
-        <div className="card">
-          <div className="card__title">Recent Entries</div>
-          {history.length === 0 ? (
-            <div className="empty-state">No completed entries yet.</div>
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Clock in</th>
-                    <th>Clock out</th>
-                    <th>Hours</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((h) => (
-                    <tr key={h.id}>
-                      <td>{formatTime(h.clock_in)}</td>
-                      <td>{formatTime(h.clock_out)}</td>
-                      <td>{h.total_hours != null ? `${h.total_hours}h` : '—'}</td>
+        {/* Right column: today's disposition timeline + recent entries */}
+        <div className="stack">
+          <div className="card">
+            <div className="card__title">Today’s Timeline</div>
+            {todaySegs.length === 0 ? (
+              <div className="empty-state">No activity yet today.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Disposition</th>
+                      <th>Start</th>
+                      <th>End</th>
+                      <th>Time</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {todaySegs.map((s) => {
+                      const em = statusTypes.find((t) => t.name === s.kind)?.emoji || '';
+                      return (
+                        <tr key={s.id}>
+                          <td style={{ fontWeight: 600 }}>
+                            {em} {s.kind}
+                          </td>
+                          <td>{hmTime(s.started_at)}</td>
+                          <td>{s.ended_at ? hmTime(s.ended_at) : <span className="badge badge--green">now</span>}</td>
+                          <td>{durMin(s, now)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card__title">Recent Entries</div>
+            {history.length === 0 ? (
+              <div className="empty-state">No completed entries yet.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Clock in</th>
+                      <th>Clock out</th>
+                      <th>Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h) => (
+                      <tr key={h.id}>
+                        <td>{formatTime(h.clock_in)}</td>
+                        <td>{formatTime(h.clock_out)}</td>
+                        <td>{h.total_hours != null ? `${h.total_hours}h` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

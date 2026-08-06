@@ -128,20 +128,22 @@ export function PresenceProvider({ children }) {
       if (settingsRes.data) setSettings(settingsRes.data);
       setEnabled(true);
 
-      // Preserve an existing disposition across page refreshes. Only set Active
-      // when they have no presence row yet or are currently Offline (i.e. coming
-      // online fresh) — otherwise just refresh last_active_at so a break/meeting
-      // isn't clobbered back to Active on reload.
+      // Preserve an existing disposition across a QUICK refresh, but if the last
+      // activity is stale (they closed the app and came back later), treat it as
+      // coming online fresh -> Active. This stops a stale break/meeting from
+      // surviving for hours and then wrongly tripping the over-limit alert.
       const active = types.find((t) => t.name === 'Active');
       const offline = types.find((t) => t.name === 'Offline');
       const { data: mine } = await supabase
         .from('user_presence')
-        .select('status_type_id')
+        .select('status_type_id, last_active_at')
         .eq('user_id', user.id)
         .maybeSingle();
       if (cancelled) return;
 
-      const comingOnline = !mine || !mine.status_type_id || mine.status_type_id === offline?.id;
+      const lastActiveMs = mine?.last_active_at ? new Date(mine.last_active_at).getTime() : 0;
+      const isStale = Date.now() - lastActiveMs > staleMinutes * 60000;
+      const comingOnline = !mine || !mine.status_type_id || mine.status_type_id === offline?.id || isStale;
       const nowIso = new Date().toISOString();
       if (comingOnline && active) {
         await supabase

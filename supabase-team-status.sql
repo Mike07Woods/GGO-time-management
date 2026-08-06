@@ -245,6 +245,9 @@ begin
     join public.profiles p on p.id = up.user_id
     where st.max_minutes is not null
       and up.updated_at < now() - make_interval(mins => st.max_minutes)
+      -- Only alert people who are actually online (recent heartbeat) — a closed
+      -- app / offline user with a stale disposition must not be flagged.
+      and up.last_active_at > now() - interval '3 minutes'
       and (up.overrun_alerted_for is null or up.overrun_alerted_for <> up.updated_at)
   loop
     insert into public.notifications (user_id, title, body, type)
