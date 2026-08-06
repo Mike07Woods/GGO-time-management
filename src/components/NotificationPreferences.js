@@ -17,7 +17,6 @@ const GROUPS = [
     items: [
       { key: 'pings', title: 'Pings', desc: 'When a manager pings you' },
       { key: 'chat_messages', title: 'Chat messages', desc: 'New messages in your channels' },
-      { key: 'shift_reminders', title: 'Shift reminders', desc: 'Before an upcoming shift' },
       { key: 'announcements', title: 'Announcements', desc: 'New company announcements' },
     ],
   },
