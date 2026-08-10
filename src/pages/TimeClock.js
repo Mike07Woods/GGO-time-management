@@ -93,10 +93,16 @@ export default function TimeClock() {
     setTodaySegs(data || []);
   }, [user.id]);
 
-  // Refresh the timeline whenever the shift or current disposition changes.
+  // Refresh the timeline when the shift changes (clock in/out).
   useEffect(() => {
     loadToday();
-  }, [loadToday, entry, openSeg]);
+  }, [loadToday, entry]);
+
+  // The current open segment is derived from today's timeline (a single source
+  // of truth managed by the database) — used for the disposition timer.
+  useEffect(() => {
+    setOpenSeg(todaySegs.find((s) => !s.ended_at) || null);
+  }, [todaySegs]);
 
   // Keep the note field in sync with the server value.
   useEffect(() => {
@@ -130,25 +136,8 @@ export default function TimeClock() {
         .limit(10),
     ]);
 
-    const open = openRes.data || null;
-    setEntry(open);
+    setEntry(openRes.data || null);
     setHistory(histRes.data || []);
-
-    // Track any disposition segment still open (presence itself is preserved
-    // across refreshes by the PresenceProvider, so no re-assert needed here).
-    if (open) {
-      const segRes = await supabase
-        .from('time_entry_breaks')
-        .select('*')
-        .eq('time_entry_id', open.id)
-        .is('ended_at', null)
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      setOpenSeg(segRes.data || null);
-    } else {
-      setOpenSeg(null);
-    }
     setLoading(false);
   }
 
@@ -157,45 +146,41 @@ export default function TimeClock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // CLOCK IN — capture GPS then open a new entry.
+  // CLOCK IN — capture GPS then open a new entry. The DB trigger opens the first
+  // (Active) disposition segment automatically.
   async function clockIn() {
+    if (busy) return;
     setBusy(true);
-
-    let coords = { lat: null, lng: null };
     try {
-      coords = await getPosition();
-    } catch (geoErr) {
-      // Still allow clocking in, but tell the user the location wasn't captured.
-      toast.info(`Location not captured: ${geoErr.message}`);
-    }
+      let coords = { lat: null, lng: null };
+      try {
+        coords = await getPosition();
+      } catch (geoErr) {
+        toast.info(`Location not captured: ${geoErr.message}`);
+      }
 
-    const { data, error } = await supabase
-      .from('time_entries')
-      .insert({
-        user_id: user.id,
-        clock_in: new Date().toISOString(),
-        clock_in_lat: coords.lat,
-        clock_in_lng: coords.lng,
-        status: 'active',
-      })
-      .select()
-      .single();
-
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+      const { data, error } = await supabase
+        .from('time_entries')
+        .insert({
+          user_id: user.id,
+          clock_in: new Date().toISOString(),
+          clock_in_lat: coords.lat,
+          clock_in_lng: coords.lng,
+          status: 'active',
+        })
+        .select()
+        .single();
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      setEntry(data);
+      await setMyStatusByName('Active');
+      await loadToday();
+      toast.success('Clocked in');
+    } finally {
+      setBusy(false);
     }
-    setEntry(data);
-    setMyStatusByName('Active');
-    // Start logging the shift's disposition timeline (begins as Active).
-    const { data: seg } = await supabase
-      .from('time_entry_breaks')
-      .insert({ time_entry_id: data.id, user_id: user.id, kind: 'Active', started_at: new Date().toISOString() })
-      .select()
-      .single();
-    setOpenSeg(seg || null);
-    toast.success('Clocked in');
   }
 
   // START BREAK
@@ -236,35 +221,19 @@ export default function TimeClock() {
     toast.success('Break ended');
   }
 
-  // Set the current disposition (Active / On Break / AFK / Meeting / …). Every
-  // change is logged as a segment in time_entry_breaks, so the whole shift is a
-  // complete timeline of what happened — the app records, HR decides what counts.
+  // Set the current disposition. Just changes presence — a DB trigger atomically
+  // closes the prior segment and opens the new one (no client-side races), so the
+  // timeline stays consistent no matter how fast the user switches.
   async function setDisposition(name) {
     if (!entry || busy) return;
     setBusy(true);
-    const isNoteStatus = NOTE_STATUSES.includes(name.toLowerCase());
-
-    await setMyStatusByName(name, isNoteStatus ? note : '');
-
-    let seg = openSeg;
-    // Close the current segment and open one for the new disposition.
-    if (seg && seg.kind !== name) {
-      await supabase
-        .from('time_entry_breaks')
-        .update({ ended_at: new Date().toISOString() })
-        .eq('id', seg.id);
-      seg = null;
+    try {
+      const isNoteStatus = NOTE_STATUSES.includes(name.toLowerCase());
+      await setMyStatusByName(name, isNoteStatus ? note : '');
+      await loadToday();
+    } finally {
+      setBusy(false);
     }
-    if (!seg) {
-      const { data } = await supabase
-        .from('time_entry_breaks')
-        .insert({ time_entry_id: entry.id, user_id: user.id, kind: name, started_at: new Date().toISOString() })
-        .select()
-        .single();
-      seg = data || null;
-    }
-    setOpenSeg(seg);
-    setBusy(false);
   }
 
   // Save the note for the current meeting/coaching disposition.
@@ -273,52 +242,44 @@ export default function TimeClock() {
     if (cur) setMyStatusByName(cur.name, note);
   }
 
-  // CLOCK OUT — capture GPS, compute total hours (minus any break), complete.
+  // CLOCK OUT — capture GPS, record gross hours, complete. Completing the entry
+  // fires a DB trigger that closes any open disposition segment.
   async function clockOut() {
+    if (busy) return;
     setBusy(true);
-
-    let coords = { lat: null, lng: null };
     try {
-      coords = await getPosition();
-    } catch (geoErr) {
-      toast.info(`Location not captured: ${geoErr.message}`);
+      let coords = { lat: null, lng: null };
+      try {
+        coords = await getPosition();
+      } catch (geoErr) {
+        toast.info(`Location not captured: ${geoErr.message}`);
+      }
+
+      const clockOutAt = new Date();
+      const totalHours = Math.max(0, (clockOutAt.getTime() - new Date(entry.clock_in).getTime()) / 3600000);
+
+      const { error } = await supabase
+        .from('time_entries')
+        .update({
+          clock_out: clockOutAt.toISOString(),
+          clock_out_lat: coords.lat,
+          clock_out_lng: coords.lng,
+          total_hours: Number(totalHours.toFixed(2)),
+          status: 'completed',
+        })
+        .eq('id', entry.id);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      setEntry(null);
+      await setMyStatusByName('Offline');
+      await loadState();
+      await loadToday();
+      toast.success(`Clocked out — ${totalHours.toFixed(2)} h logged`);
+    } finally {
+      setBusy(false);
     }
-
-    const clockOutAt = new Date();
-
-    // Close the open disposition segment at clock-out time.
-    if (openSeg) {
-      await supabase
-        .from('time_entry_breaks')
-        .update({ ended_at: clockOutAt.toISOString() })
-        .eq('id', openSeg.id);
-    }
-
-    // total_hours = the full on-clock time (gross). We record the disposition
-    // breakdown separately; how much is paid is left to HR.
-    const totalHours = Math.max(0, (clockOutAt.getTime() - new Date(entry.clock_in).getTime()) / 3600000);
-
-    const { error } = await supabase
-      .from('time_entries')
-      .update({
-        clock_out: clockOutAt.toISOString(),
-        clock_out_lat: coords.lat,
-        clock_out_lng: coords.lng,
-        total_hours: Number(totalHours.toFixed(2)),
-        status: 'completed',
-      })
-      .eq('id', entry.id);
-
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setEntry(null);
-    setOpenSeg(null);
-    setMyStatusByName('Offline');
-    loadState();
-    toast.success(`Clocked out — ${totalHours.toFixed(2)} h logged`);
   }
 
   // Live elapsed time since clock-in (HH:MM:SS).
