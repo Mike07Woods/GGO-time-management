@@ -3,15 +3,16 @@
 // Role editing and activate/deactivate now live in User Management; this page is
 // purely for looking people up. "View profile" opens a right-side drawer.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, ChevronRight, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useRole } from '../hooks/useRole';
 import { usePresence } from '../context/PresenceContext';
 import Skeleton from '../components/Skeleton';
 
 // Role -> badge class + display label. ('user' shows as "Employee".)
-const ROLE_BADGE = { owner: 'badge--purple', admin: 'badge--blue', manager: 'badge--teal', user: 'badge--gray' };
-const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', manager: 'Manager', user: 'Employee' };
+const ROLE_BADGE = { owner: 'badge--purple', admin: 'badge--blue', manager: 'badge--teal', monitor: 'badge--amber', user: 'badge--gray' };
+const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', manager: 'Manager', monitor: 'Monitor', user: 'Employee' };
 
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
@@ -23,6 +24,8 @@ function fullName(p) {
 
 export default function Directory() {
   const { getStatus } = usePresence();
+  const { isMonitor, getCurrentDepartment } = useRole();
+  const monitorDept = getCurrentDepartment();
 
   const [people, setPeople] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -32,17 +35,20 @@ export default function Directory() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null); // person shown in the drawer
 
-  async function loadPeople() {
+  const loadPeople = useCallback(async () => {
     setLoading(true);
+    // Monitors only ever load their own department's people.
+    let pq = supabase.from('profiles').select('*').order('first_name', { ascending: true });
+    if (isMonitor && monitorDept) pq = pq.eq('department_id', monitorDept);
     const [peopleRes, deptRes] = await Promise.all([
-      supabase.from('profiles').select('*').order('first_name', { ascending: true }),
+      pq,
       supabase.from('departments').select('id, name').order('name', { ascending: true }),
     ]);
     if (peopleRes.error) setError(peopleRes.error.message);
     setPeople(peopleRes.data || []);
     setDepartments(deptRes.error ? [] : deptRes.data || []);
     setLoading(false);
-  }
+  }, [isMonitor, monitorDept]);
 
   const deptName = useMemo(() => {
     const map = {};
@@ -52,7 +58,12 @@ export default function Directory() {
 
   useEffect(() => {
     loadPeople();
-  }, []);
+  }, [loadPeople]);
+
+  // Monitors are locked to their own department filter.
+  useEffect(() => {
+    if (isMonitor && monitorDept) setDeptFilter(monitorDept);
+  }, [isMonitor, monitorDept]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -92,16 +103,22 @@ export default function Directory() {
           {!loading && <span className="badge badge--gray" style={{ marginLeft: 6 }}>{people.length}</span>}
         </h1>
         <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-          {departments.length > 0 && (
-            <select className="select" style={{ maxWidth: 190 }} value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
-              <option value="all">All departments</option>
-              <option value="unassigned">Unassigned</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+          {isMonitor ? (
+            <span className="badge badge--teal" style={{ alignSelf: 'center' }}>
+              Viewing: {deptName[monitorDept] || 'your department'}
+            </span>
+          ) : (
+            departments.length > 0 && (
+              <select className="select" style={{ maxWidth: 190 }} value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+                <option value="all">All departments</option>
+                <option value="unassigned">Unassigned</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )
           )}
           <input
             className="input"

@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { SkeletonList } from '../components/Skeleton';
 
 function ymd(d) {
@@ -56,6 +57,9 @@ function downloadCsv(filename, rows) {
 }
 
 export default function Reports() {
+  // Monitors see only their own department's data.
+  const { isMonitor, memberIds, deptName, ready: scopeReady } = useMonitorScope();
+
   // Default range: the last 7 days.
   const today = useMemo(() => new Date(), []);
   const weekAgo = useMemo(() => {
@@ -93,21 +97,27 @@ export default function Reports() {
     endExclusive.setDate(endExclusive.getDate() + 1);
     const endIso = endExclusive.toISOString();
 
+    // Wait until we know the monitor's department members before querying.
+    if (isMonitor && !scopeReady) return;
+    const ids = isMonitor ? memberIds || [] : null;
+
+    let peopleQ = supabase.from('profiles').select('id, first_name, last_name, email').eq('is_active', true);
+    let entriesQ = supabase.from('time_entries').select('user_id, total_hours, status').gte('clock_in', startIso).lt('clock_in', endIso);
+    let tsQ = supabase.from('timesheets').select('status').gte('week_start', start).lte('week_start', end);
+    let tasksQ = supabase.from('tasks').select('status').gte('created_at', startIso).lt('created_at', endIso);
+    if (ids) {
+      peopleQ = peopleQ.in('id', ids);
+      entriesQ = entriesQ.in('user_id', ids);
+      tsQ = tsQ.in('user_id', ids);
+      tasksQ = tasksQ.in('assigned_to', ids);
+    }
+
     const [peopleRes, entriesRes, tsRes, tasksRes, ruleRes] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, email').eq('is_active', true),
-      supabase
-        .from('time_entries')
-        .select('user_id, total_hours, status')
-        .gte('clock_in', startIso)
-        .lt('clock_in', endIso),
-      supabase.from('timesheets').select('status').gte('week_start', start).lte('week_start', end),
-      supabase.from('tasks').select('status').gte('created_at', startIso).lt('created_at', endIso),
-      supabase
-        .from('overtime_rules')
-        .select('weekly_threshold')
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle(),
+      peopleQ,
+      entriesQ,
+      tsQ,
+      tasksQ,
+      supabase.from('overtime_rules').select('weekly_threshold').eq('is_active', true).limit(1).maybeSingle(),
     ]);
 
     if (entriesRes.error) setError(entriesRes.error.message);
@@ -147,7 +157,7 @@ export default function Reports() {
     if (ruleRes.data?.weekly_threshold != null) setThreshold(Number(ruleRes.data.weekly_threshold));
 
     setLoading(false);
-  }, [start, end]);
+  }, [start, end, isMonitor, memberIds, scopeReady]);
 
   useEffect(() => {
     load();
@@ -157,26 +167,32 @@ export default function Reports() {
   useEffect(() => {
     let active = true;
     (async () => {
+      if (isMonitor && !scopeReady) return;
+      const ids = isMonitor ? memberIds || [] : null;
       setAttLoading(true);
       const dayStart = new Date(`${attDate}T00:00:00`);
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const [peopleRes, entriesRes, segRes] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, email'),
-        supabase
-          .from('time_entries')
-          .select('user_id, clock_in, clock_out, total_hours, status')
-          .gte('clock_in', dayStart.toISOString())
-          .lt('clock_in', dayEnd.toISOString()),
-        // Disposition timeline segments for the day (breaks, afk, meetings, …).
-        supabase
-          .from('time_entry_breaks')
-          .select('id, user_id, kind, started_at, ended_at')
-          .gte('started_at', dayStart.toISOString())
-          .lt('started_at', dayEnd.toISOString())
-          .order('started_at', { ascending: true }),
-      ]);
+      let peopleQ = supabase.from('profiles').select('id, first_name, last_name, email');
+      let entriesQ = supabase
+        .from('time_entries')
+        .select('user_id, clock_in, clock_out, total_hours, status')
+        .gte('clock_in', dayStart.toISOString())
+        .lt('clock_in', dayEnd.toISOString());
+      let segQ = supabase
+        .from('time_entry_breaks')
+        .select('id, user_id, kind, started_at, ended_at')
+        .gte('started_at', dayStart.toISOString())
+        .lt('started_at', dayEnd.toISOString())
+        .order('started_at', { ascending: true });
+      if (ids) {
+        peopleQ = peopleQ.in('id', ids);
+        entriesQ = entriesQ.in('user_id', ids);
+        segQ = segQ.in('user_id', ids);
+      }
+
+      const [peopleRes, entriesRes, segRes] = await Promise.all([peopleQ, entriesQ, segQ]);
       if (!active) return;
 
       const nameById = {};
@@ -245,7 +261,7 @@ export default function Reports() {
     return () => {
       active = false;
     };
-  }, [attDate]);
+  }, [attDate, isMonitor, memberIds, scopeReady]);
 
   // Disposition columns present in the day's data (ordered).
   const attKinds = useMemo(() => {
@@ -287,20 +303,26 @@ export default function Reports() {
   useEffect(() => {
     let active = true;
     (async () => {
+      if (isMonitor && !scopeReady) return;
+      const ids = isMonitor ? memberIds || [] : null;
       setLogLoading(true);
       const startIso = new Date(`${start}T00:00:00`).toISOString();
       const endEx = new Date(`${end}T00:00:00`);
       endEx.setDate(endEx.getDate() + 1);
 
-      const [peopleRes, entriesRes] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, email'),
-        supabase
-          .from('time_entries')
-          .select('id, user_id, clock_in, clock_out, total_hours, status')
-          .gte('clock_in', startIso)
-          .lt('clock_in', endEx.toISOString())
-          .order('clock_in', { ascending: false }),
-      ]);
+      let peopleQ = supabase.from('profiles').select('id, first_name, last_name, email');
+      let entriesQ = supabase
+        .from('time_entries')
+        .select('id, user_id, clock_in, clock_out, total_hours, status')
+        .gte('clock_in', startIso)
+        .lt('clock_in', endEx.toISOString())
+        .order('clock_in', { ascending: false });
+      if (ids) {
+        peopleQ = peopleQ.in('id', ids);
+        entriesQ = entriesQ.in('user_id', ids);
+      }
+
+      const [peopleRes, entriesRes] = await Promise.all([peopleQ, entriesQ]);
       if (!active) return;
 
       const nameById = {};
@@ -322,7 +344,7 @@ export default function Reports() {
     return () => {
       active = false;
     };
-  }, [start, end]);
+  }, [start, end, isMonitor, memberIds, scopeReady]);
 
   function exportLog() {
     const header = ['Employee', 'Date', 'Clock in', 'Clock out', 'Hours', 'Status'];
@@ -358,7 +380,10 @@ export default function Reports() {
     <div>
       <div className="page-header">
         <div>
-          <h1><BarChart2 size={20} /> Reports &amp; Analytics</h1>
+          <h1>
+            <BarChart2 size={20} />{' '}
+            {isMonitor ? `Department Report: ${deptName || 'your department'}` : 'Reports & Analytics'}
+          </h1>
           <p>Team summaries for the selected date range.</p>
         </div>
         <button className="btn btn--ghost" onClick={exportAttendance} disabled={attendance.length === 0}>
