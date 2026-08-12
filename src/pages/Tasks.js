@@ -10,6 +10,7 @@ import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { CheckSquare } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { SkeletonList } from '../components/Skeleton';
 
 const COLUMNS = [
@@ -43,6 +44,7 @@ function formatDue(value) {
 export default function Tasks() {
   const { user } = useAuth();
   const { isManager } = useRole();
+  const { isMonitor, memberIds } = useMonitorScope();
   const toast = useToast();
 
   const [tasks, setTasks] = useState([]);
@@ -66,19 +68,22 @@ export default function Tasks() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [tasksRes, peopleRes] = await Promise.all([
-      supabase.from('tasks').select('*').order('created_at', { ascending: false }),
-      supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email')
-        .eq('is_active', true)
-        .order('first_name', { ascending: true }),
-    ]);
+    let tasksQ = supabase.from('tasks').select('*').order('created_at', { ascending: false });
+    let peopleQ = supabase
+      .from('profiles')
+      .select('id, first_name, last_name, email')
+      .eq('is_active', true)
+      .order('first_name', { ascending: true });
+    if (isMonitor && memberIds) {
+      tasksQ = tasksQ.in('assigned_to', memberIds); // department tasks only
+      peopleQ = peopleQ.in('id', memberIds);
+    }
+    const [tasksRes, peopleRes] = await Promise.all([tasksQ, peopleQ]);
     if (tasksRes.error) setError(tasksRes.error.message);
     setTasks(tasksRes.data || []);
     setPeople(peopleRes.data || []);
     setLoading(false);
-  }, []);
+  }, [isMonitor, memberIds]);
 
   useEffect(() => {
     loadData();
@@ -310,7 +315,8 @@ export default function Tasks() {
                             {t.due_date ? ` · due ${formatDue(t.due_date)}` : ''}
                           </div>
 
-                          {/* Move controls (click to update status) */}
+                          {/* Move controls (hidden for read-only monitors) */}
+                          {!isMonitor && (
                           <div className="row" style={{ gap: 6, marginTop: 8 }}>
                             {colIndex > 0 && (
                               <button
@@ -339,6 +345,7 @@ export default function Tasks() {
                               </button>
                             )}
                           </div>
+                          )}
                         </div>
                       );
                     })}

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { supabase } from '../supabaseClient';
 import Skeleton from '../components/Skeleton';
 import PushPrompt from '../components/PushPrompt';
@@ -74,6 +75,7 @@ function shiftTime(v) {
 export default function Dashboard() {
   const { user, profile } = useAuth();
   const { isManager } = useRole();
+  const { isMonitor, deptName } = useMonitorScope();
 
   const [loading, setLoading] = useState(true);
   const [upcomingShifts, setUpcomingShifts] = useState([]);
@@ -193,6 +195,11 @@ export default function Dashboard() {
       >
         <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>
           {greeting()}, {firstName} 👋
+          {isMonitor && (
+            <span className="badge badge--amber" style={{ marginLeft: 10, verticalAlign: 'middle' }}>
+              {deptName || 'Department'} Monitor
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{today}</div>
       </div>

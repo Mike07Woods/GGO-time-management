@@ -11,6 +11,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { SkeletonList } from '../components/Skeleton';
 
 // Status -> presence-style dot colour.
@@ -43,6 +44,7 @@ const EMPTY_FORM = { title: '', assigned_to: '', start_time: '', end_time: '', l
 export default function Scheduling() {
   const { user, profile } = useAuth();
   const { canCreate, canEdit, isManager, isAdmin } = useRole();
+  const { isMonitor, memberIds } = useMonitorScope();
   const toast = useToast();
 
   const canCreateShift = canCreate('shift'); // manager and above
@@ -79,7 +81,11 @@ export default function Scheduling() {
   async function loadData() {
     setLoading(true);
     let shiftQuery = supabase.from('shifts').select('*').order('start_time', { ascending: true });
-    if (!isManager) shiftQuery = shiftQuery.eq('assigned_to', user.id);
+    if (isMonitor && memberIds) {
+      shiftQuery = shiftQuery.in('assigned_to', memberIds); // department shifts (read-only)
+    } else if (!isManager) {
+      shiftQuery = shiftQuery.eq('assigned_to', user.id);
+    }
 
     const [shiftsRes, peopleRes] = await Promise.all([
       shiftQuery,
@@ -99,7 +105,7 @@ export default function Scheduling() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isManager]);
+  }, [user, isManager, isMonitor, memberIds]);
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));

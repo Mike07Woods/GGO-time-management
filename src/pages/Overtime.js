@@ -38,7 +38,8 @@ function downloadCsv(filename, rows) {
 
 export default function Overtime() {
   const { profile } = useAuth();
-  const { isAdmin } = useRole();
+  const { isAdmin, isMonitor, getCurrentDepartment } = useRole();
+  const monitorDept = getCurrentDepartment();
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [rule, setRule] = useState(null);
@@ -81,12 +82,15 @@ export default function Overtime() {
     const endExclusive = new Date(weekStart);
     endExclusive.setDate(endExclusive.getDate() + 7);
 
-    // People in scope: managers see their department, admins/owners see all.
+    // People in scope: monitors see their department (by department_id), managers
+    // see their department (legacy text), admins/owners see all.
     let peopleQuery = supabase
       .from('profiles')
-      .select('id, first_name, last_name, email, department')
+      .select('id, first_name, last_name, email, department, department_id')
       .eq('is_active', true);
-    if (!isAdmin) {
+    if (isMonitor) {
+      peopleQuery = peopleQuery.eq('department_id', monitorDept || '00000000-0000-0000-0000-000000000000');
+    } else if (!isAdmin) {
       peopleQuery = peopleQuery.eq('department', profile?.department || '___none___');
     }
 
@@ -118,7 +122,7 @@ export default function Overtime() {
 
     setRows(computed);
     setLoading(false);
-  }, [weekStart, isAdmin, profile]);
+  }, [weekStart, isAdmin, isMonitor, monitorDept, profile]);
 
   useEffect(() => {
     loadWeek();

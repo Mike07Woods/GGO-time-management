@@ -10,6 +10,7 @@ import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { Timer } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { SkeletonList } from '../components/Skeleton';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -45,6 +46,7 @@ function prettyDate(d) {
 export default function Timesheets() {
   const { user, profile } = useAuth();
   const { isManager } = useRole();
+  const { isMonitor, memberIds } = useMonitorScope();
   const toast = useToast();
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
@@ -84,11 +86,13 @@ export default function Timesheets() {
   // Load the people list (managers+ can pick anyone) + the active overtime rule.
   useEffect(() => {
     async function loadRefs() {
-      if (isManager) {
-        const { data } = await supabase
+      if (isManager || isMonitor) {
+        let pq = supabase
           .from('profiles')
-          .select('id, first_name, last_name, email')
+          .select('id, first_name, last_name, email, department_id')
           .order('first_name', { ascending: true });
+        if (isMonitor && memberIds) pq = pq.in('id', memberIds);
+        const { data } = await pq;
         setPeople(data || []);
       }
       const { data: rule } = await supabase
@@ -101,7 +105,7 @@ export default function Timesheets() {
       if (rule?.weekly_threshold != null) setWeeklyThreshold(Number(rule.weekly_threshold));
     }
     loadRefs();
-  }, [isManager]);
+  }, [isManager, isMonitor, memberIds]);
 
   // Recompute the daily breakdown + load the saved timesheet whenever the
   // selected user or week changes.
@@ -149,9 +153,10 @@ export default function Timesheets() {
   const loadList = useCallback(async () => {
     let q = supabase.from('timesheets').select('*').order('week_start', { ascending: false });
     if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+    if (isMonitor && memberIds) q = q.in('user_id', memberIds); // department only
     const { data } = await q;
     setList(data || []);
-  }, [statusFilter]);
+  }, [statusFilter, isMonitor, memberIds]);
 
   useEffect(() => {
     loadList();
@@ -234,8 +239,8 @@ export default function Timesheets() {
           </span>
         </div>
 
-        {/* Employee picker for managers+ */}
-        {isManager && (
+        {/* Employee picker for managers+ (and monitors, department-scoped) */}
+        {(isManager || isMonitor) && (
           <div className="field" style={{ maxWidth: 280 }}>
             <label>Employee</label>
             <select
