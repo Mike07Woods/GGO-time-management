@@ -14,6 +14,10 @@ import {
   canManageUser,
   assignableRoles,
   canAccessPage,
+  isMonitor,
+  isManagerOrAbove,
+  canApprove,
+  canViewDepartmentOnly,
 } from './permissions';
 
 const ROLES = ['user', 'manager', 'admin', 'owner'];
@@ -111,9 +115,9 @@ describe('user management', () => {
     }
   });
 
-  test('assignableRoles: owner=all, admin=user/manager, others=none', () => {
-    expect(assignableRoles('owner')).toEqual(['user', 'manager', 'admin', 'owner']);
-    expect(assignableRoles('admin')).toEqual(['user', 'manager']);
+  test('assignableRoles: owner=all, admin=user/monitor/manager, others=none', () => {
+    expect(assignableRoles('owner')).toEqual(['user', 'monitor', 'manager', 'admin', 'owner']);
+    expect(assignableRoles('admin')).toEqual(['user', 'monitor', 'manager']);
     expect(assignableRoles('manager')).toEqual([]);
     expect(assignableRoles('user')).toEqual([]);
   });
@@ -161,5 +165,47 @@ describe('canAccessPage', () => {
 
   test('unknown page keys default to accessible', () => {
     expect(canAccessPage('user', 'something-new')).toBe(true);
+  });
+});
+
+describe('monitor role (read-only, department-scoped)', () => {
+  test('cannot create / edit / delete / manage / approve', () => {
+    expect(canCreate('monitor', 'shift')).toBe(false);
+    expect(canCreate('monitor', 'announcement')).toBe(false);
+    expect(canEdit('monitor', 'shift')).toBe(false);
+    expect(canDelete('monitor')).toBe(false);
+    expect(canManageUsers('monitor')).toBe(false);
+    expect(canApprove('monitor')).toBe(false);
+  });
+
+  test('is not manager / admin / owner', () => {
+    expect(isManager('monitor')).toBe(false);
+    expect(isAdmin('monitor')).toBe(false);
+    expect(isOwner('monitor')).toBe(false);
+    expect(isManagerOrAbove('monitor')).toBe(false);
+  });
+
+  test('monitor flags', () => {
+    expect(isMonitor('monitor')).toBe(true);
+    expect(isMonitor('manager')).toBe(false);
+    expect(canViewDepartmentOnly('monitor')).toBe(true);
+    expect(canViewDepartmentOnly('manager')).toBe(false);
+  });
+
+  test('sees its viewer pages, blocked from the rest', () => {
+    for (const key of [
+      'dashboard', 'directory', 'scheduling', 'timeclock', 'timesheets',
+      'overtime', 'tasks', 'reports', 'announcements', 'notifications', 'chat',
+    ]) {
+      expect(canAccessPage('monitor', key)).toBe(true);
+    }
+    for (const key of ['forms', 'helpdesk', 'events', 'audit', 'team_status', 'users', 'departments', 'knowledge']) {
+      expect(canAccessPage('monitor', key)).toBe(false);
+    }
+  });
+
+  test('existing roles unchanged for approve', () => {
+    expect(canApprove('manager')).toBe(true);
+    expect(canApprove('user')).toBe(false);
   });
 });

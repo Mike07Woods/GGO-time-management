@@ -109,7 +109,7 @@ export default function App() {
         {/* --- Phase 2 routes --- */}
         <Route path="/timesheets" element={<RequireAccess pageKey="timesheets"><Timesheets /></RequireAccess>} />
         <Route path="/overtime" element={<RequireAccess pageKey="overtime"><Overtime /></RequireAccess>} />
-        <Route path="/forms" element={<Forms />} />
+        <Route path="/forms" element={<RequireAccess pageKey="forms"><Forms /></RequireAccess>} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/reports" element={<RequireAccess pageKey="reports"><Reports /></RequireAccess>} />
 
