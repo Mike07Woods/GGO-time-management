@@ -92,6 +92,10 @@ export default function UserManagement() {
   function changeRole(person, role) {
     if (role === person.role) return;
     patchProfile(person, { role }, 'Role updated');
+    // A monitor with no department can't see anything — remind the admin.
+    if (role === 'monitor' && !person.department_id) {
+      toast.info('Set a department for this monitor — they can only view their assigned department.');
+    }
   }
 
   function changeDepartment(person, deptId) {
@@ -201,26 +205,40 @@ export default function UserManagement() {
                         </select>
                       </td>
                       <td>
-                        {departments.length === 0 ? (
-                          <span className="dim" title="Run the departments migration to enable">
-                            {deptName[p.department_id] || '—'}
-                          </span>
-                        ) : (
-                          <select
-                            className="select"
-                            style={{ maxWidth: 160 }}
-                            value={p.department_id || ''}
-                            disabled={busy}
-                            onChange={(e) => changeDepartment(p, e.target.value)}
-                          >
-                            <option value="">—</option>
-                            {departments.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.name}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                        {(() => {
+                          const needsDept = p.role === 'monitor' && !p.department_id;
+                          if (departments.length === 0) {
+                            return (
+                              <span className="dim" title="Run the departments migration to enable">
+                                {deptName[p.department_id] || '—'}
+                              </span>
+                            );
+                          }
+                          return (
+                            <div>
+                              <select
+                                className="select"
+                                style={{ maxWidth: 160, borderColor: needsDept ? 'var(--red)' : undefined }}
+                                value={p.department_id || ''}
+                                disabled={busy}
+                                onChange={(e) => changeDepartment(p, e.target.value)}
+                              >
+                                <option value="">{p.role === 'monitor' ? '— required —' : '—'}</option>
+                                {departments.map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.name}
+                                  </option>
+                                ))}
+                              </select>
+                              {needsDept && (
+                                <div style={{ color: 'var(--red)', fontSize: 11, marginTop: 3 }}>
+                                  <span aria-hidden="true">* </span>Required for monitor — they can only
+                                  view their department.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td>
                         {/* Owner always has phone access; toggle applies to everyone else. */}

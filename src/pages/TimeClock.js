@@ -8,9 +8,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { usePresence } from '../context/PresenceContext';
+import { useRole } from '../hooks/useRole';
 import { Clock } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
+import DepartmentClockBoard from '../components/DepartmentClockBoard';
 
 // Promisified geolocation lookup. Resolves to { lat, lng } or rejects with a message.
 function getPosition() {
@@ -70,6 +72,7 @@ export default function TimeClock() {
     statusById,
     setMyStatusByName,
   } = usePresence();
+  const { isMonitor } = useRole();
 
   const [entry, setEntry] = useState(null); // current open entry (active/on_break)
   const [history, setHistory] = useState([]); // recent completed entries
@@ -419,8 +422,10 @@ export default function TimeClock() {
           )}
         </div>
 
-        {/* Right column: today's disposition timeline + recent entries */}
+        {/* Right column: (monitor) department board, then today's timeline + entries */}
         <div className="stack">
+          {isMonitor && <DepartmentClockBoard />}
+
           <div className="card">
             <div className="card__title">Today’s Timeline</div>
             {todaySegs.length === 0 ? (
