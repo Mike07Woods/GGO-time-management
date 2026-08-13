@@ -17,6 +17,7 @@ const ROLE_OPTIONS = [
   { value: 'owner', label: 'Owner' },
   { value: 'admin', label: 'Admin' },
   { value: 'manager', label: 'Manager' },
+  { value: 'monitor', label: 'Monitor' },
   { value: 'user', label: 'Employee' },
 ];
 
@@ -24,6 +25,7 @@ const ROLE_STYLE = {
   owner: { background: 'rgba(91,63,217,0.15)', color: '#b3a4f5', borderColor: 'rgba(91,63,217,0.45)' },
   admin: { background: 'rgba(0,75,200,0.15)', color: '#6fa0ff', borderColor: 'rgba(0,75,200,0.45)' },
   manager: { background: 'rgba(0,158,142,0.15)', color: '#4fd6c6', borderColor: 'rgba(0,158,142,0.45)' },
+  monitor: { background: 'rgba(245,158,11,0.15)', color: '#f0b429', borderColor: 'rgba(245,158,11,0.45)' },
   user: { background: 'rgba(159,176,197,0.12)', color: '#a0aec0', borderColor: 'var(--border-color)' },
 };
 
