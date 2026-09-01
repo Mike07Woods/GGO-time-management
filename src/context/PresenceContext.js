@@ -29,6 +29,7 @@ export function PresenceProvider({ children }) {
   const myUpdatedAtRef = useRef(null); // when I entered my current status
   const statusTypesRef = useRef([]);
   const notifiedOverrunRef = useRef(null); // status-instance already alerted on
+  const broadcastRef = useRef(null); // realtime broadcast channel for status changes
 
   // Keep refs in sync.
   useEffect(() => {
@@ -71,7 +72,10 @@ export function PresenceProvider({ children }) {
   );
 
   const fetchAllPresence = useCallback(async () => {
-    const { data, error } = await supabase.from('user_presence').select('*');
+    // Explicit columns only (no select('*')) — presence is small and polled.
+    const { data, error } = await supabase
+      .from('user_presence')
+      .select('user_id, status_type_id, custom_note, last_active_at, afk_at, updated_at');
     if (error) return;
     const map = {};
     (data || []).forEach((r) => (map[r.user_id] = r));
@@ -87,6 +91,8 @@ export function PresenceProvider({ children }) {
       // Optimistic local update.
       setAllPresence((prev) => ({ ...prev, [user.id]: { ...(prev[user.id] || {}), ...payload } }));
       await supabase.from('user_presence').upsert(payload, { onConflict: 'user_id' });
+      // Broadcast the change so other clients update instantly (no full refetch).
+      broadcastRef.current?.send({ type: 'broadcast', event: 'status', payload });
     },
     [user]
   );
@@ -174,6 +180,11 @@ export function PresenceProvider({ children }) {
       // status the user has manually chosen.
       await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', user.id);
 
+      // Poll everyone's presence once a minute — refreshes last_active_at for
+      // stale/offline detection and reconciles any missed broadcast. One small
+      // query per client (not the old N-squared full-table refetch storm).
+      fetchAllPresence();
+
       // Disposition time-limit check — notify myself once per status instance if
       // I've stayed in a status past its max_minutes.
       const current = myStatusIdRef.current;
@@ -192,17 +203,30 @@ export function PresenceProvider({ children }) {
       }
     }, 60000);
     return () => clearInterval(interval);
-  }, [enabled, user]);
+  }, [enabled, user, fetchAllPresence]);
 
-  // --- Realtime: any presence change re-syncs everyone ---
+  // --- Realtime: disposition changes arrive as lightweight BROADCASTs (instant)
+  //     and are patched into state. Heartbeats are NOT broadcast (user_presence
+  //     is removed from the realtime publication), so there's no N-squared
+  //     fan-out and no full-table refetch on every change. ---
   useEffect(() => {
     if (!enabled || !user) return undefined;
-    const channel = supabase
-      .channel('presence-global')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_presence' }, fetchAllPresence)
+    const channel = supabase.channel('presence-status', { config: { broadcast: { self: false } } });
+    channel
+      .on('broadcast', { event: 'status' }, ({ payload }) => {
+        if (!payload?.user_id) return;
+        setAllPresence((prev) => ({
+          ...prev,
+          [payload.user_id]: { ...(prev[payload.user_id] || {}), ...payload },
+        }));
+      })
       .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [enabled, user, fetchAllPresence]);
+    broadcastRef.current = channel;
+    return () => {
+      broadcastRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [enabled, user]);
 
   // NOTE: we deliberately do NOT write "Offline" on tab close / unmount. That
   // handler also fired on a normal refresh (beforeunload), so a user on Break
