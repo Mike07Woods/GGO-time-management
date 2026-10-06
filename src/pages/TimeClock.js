@@ -112,6 +112,37 @@ export default function TimeClock() {
     setNote(myPresence?.custom_note || '');
   }, [myPresence]);
 
+  // "Still working?" prompt (sent by the server after the shift ends). Polled
+  // every 30s while this page is open; quietly ignored if the table isn't set up.
+  const [prompt, setPrompt] = useState(null);
+  const loadPrompt = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('time_prompts')
+      .select('id, asked_at')
+      .eq('user_id', user.id)
+      .is('answer', null)
+      .order('asked_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setPrompt(error ? null : data || null);
+  }, [user.id]);
+
+  useEffect(() => {
+    loadPrompt();
+    const t = setInterval(loadPrompt, 30000);
+    return () => clearInterval(t);
+  }, [loadPrompt, entry]);
+
+  async function answerStillWorking() {
+    const { error } = await supabase.rpc('answer_time_prompt', { p_answer: 'working' });
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setPrompt(null);
+    toast.success('Thanks — we will ask again in 30 minutes.');
+  }
+
   // Tick every second so the elapsed timer updates live.
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -312,6 +343,25 @@ export default function TimeClock() {
           <p>Clock in and out — your location is stamped automatically.</p>
         </div>
       </div>
+
+      {entry && prompt && (
+        <div className="alert alert--info" role="alert" style={{ marginBottom: 16 }}>
+          <strong>Still working?</strong> Your shift has ended. Answer by{' '}
+          {new Date(new Date(prompt.asked_at).getTime() + 30 * 60000).toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+          })}{' '}
+          or you will be clocked out automatically.
+          <div className="row" style={{ gap: 8, marginTop: 10 }}>
+            <button className="btn btn--primary btn--sm" onClick={answerStillWorking}>
+              Yes, still working
+            </button>
+            <button className="btn btn--danger btn--sm" disabled={busy} onClick={clockOut}>
+              Clock out now
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid--2">
         {/* Current status / actions */}
