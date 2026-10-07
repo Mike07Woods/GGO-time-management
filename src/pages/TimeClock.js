@@ -345,13 +345,15 @@ export default function TimeClock() {
   }
   // Total shift time since clock-in.
   const elapsed = () => hms(entry?.clock_in);
-  // Time in the CURRENT disposition (resets each time they switch). Prefers the
-  // open segment's start (survives refreshes) but only when it is for the status
-  // the user is in NOW; otherwise it uses when the current status began. It no
-  // longer falls back to the shift's clock-in time, which showed the total.
+  // Time in the CURRENT disposition (resets each time they switch). Uses when the
+  // current status began (`updated_at`, stamped by this same device's clock, so it
+  // lines up with the ticking `now`). The segment's started_at is stamped by the
+  // database clock, which runs ~46s behind real time and made the timer start at
+  // ~0:46 instead of 0:00. The segment is only a fallback, and the shift's
+  // clock-in time (the total) is the last resort.
   const dispElapsed = () => {
     const segIsCurrent = openSeg && currentDisp && openSeg.kind === currentDisp.name;
-    return hms(segIsCurrent ? openSeg.started_at : myPresence?.updated_at || openSeg?.started_at || entry?.clock_in);
+    return hms(myPresence?.updated_at || (segIsCurrent ? openSeg.started_at : null) || entry?.clock_in);
   };
 
   const onBreak = entry?.status === 'on_break';
