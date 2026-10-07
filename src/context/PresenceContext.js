@@ -7,7 +7,7 @@
 // Everything degrades gracefully: if the team-status tables don't exist yet
 // (migration not run), the provider quietly no-ops and the app works as before.
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 
@@ -15,6 +15,10 @@ const PresenceContext = createContext(null);
 
 export function PresenceProvider({ children }) {
   const { user } = useAuth();
+  // Key every effect on the user's ID, not the `user` object: AuthContext hands
+  // out a NEW object on every auth event (token refresh, tab refocus), which used
+  // to re-run the whole setup below and could reset a Break/Meeting back to Active.
+  const userId = user?.id || null;
 
   const [statusTypes, setStatusTypes] = useState([]);
   const [allPresence, setAllPresence] = useState({}); // user_id -> presence row
@@ -37,10 +41,10 @@ export function PresenceProvider({ children }) {
   }, [statusTypes]);
 
   useEffect(() => {
-    const mine = user ? allPresence[user.id] : null;
+    const mine = userId ? allPresence[userId] : null;
     myStatusIdRef.current = mine?.status_type_id || null;
     myUpdatedAtRef.current = mine?.updated_at || null;
-  }, [allPresence, user]);
+  }, [allPresence, userId]);
 
   const statusById = useCallback(
     (id) => statusTypes.find((t) => t.id === id) || null,
@@ -84,17 +88,24 @@ export function PresenceProvider({ children }) {
 
   const setMyStatus = useCallback(
     async (statusTypeId, note) => {
-      if (!user || !statusTypeId) return;
+      if (!userId || !statusTypeId) return;
       const now = new Date().toISOString();
-      const payload = { user_id: user.id, status_type_id: statusTypeId, last_active_at: now, updated_at: now };
+      const unchanged = myStatusIdRef.current === statusTypeId;
+      // Same status and nothing new to say -> nothing to do (don't restart the timer).
+      if (unchanged && note === undefined) return;
+      const payload = { user_id: userId, status_type_id: statusTypeId, last_active_at: now };
+      // `updated_at` marks when the CURRENT status began, so only a real change
+      // moves it. Saving a note on the same status must not reset "for X min" or
+      // the over-limit timer.
+      if (!unchanged) payload.updated_at = now;
       if (note !== undefined) payload.custom_note = note || null;
       // Optimistic local update.
-      setAllPresence((prev) => ({ ...prev, [user.id]: { ...(prev[user.id] || {}), ...payload } }));
+      setAllPresence((prev) => ({ ...prev, [userId]: { ...(prev[userId] || {}), ...payload } }));
       await supabase.from('user_presence').upsert(payload, { onConflict: 'user_id' });
       // Broadcast the change so other clients update instantly (no full refetch).
       broadcastRef.current?.send({ type: 'broadcast', event: 'status', payload });
     },
-    [user]
+    [userId]
   );
 
   // Convenience: set my status by its display name (used by the time clock).
@@ -113,7 +124,7 @@ export function PresenceProvider({ children }) {
 
   // --- Init: load status types + settings, set myself Active, load everyone ---
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setEnabled(false);
       return undefined;
     }
@@ -143,7 +154,7 @@ export function PresenceProvider({ children }) {
       const { data: mine } = await supabase
         .from('user_presence')
         .select('status_type_id, last_active_at')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle();
       if (cancelled) return;
 
@@ -155,12 +166,12 @@ export function PresenceProvider({ children }) {
         await supabase
           .from('user_presence')
           .upsert(
-            { user_id: user.id, status_type_id: active.id, last_active_at: nowIso, afk_at: null, updated_at: nowIso },
+            { user_id: userId, status_type_id: active.id, last_active_at: nowIso, afk_at: null, updated_at: nowIso },
             { onConflict: 'user_id' }
           );
       } else {
         // Keep their current status; just mark them freshly active (not stale).
-        await supabase.from('user_presence').update({ last_active_at: nowIso }).eq('user_id', user.id);
+        await supabase.from('user_presence').update({ last_active_at: nowIso }).eq('user_id', userId);
       }
       fetchAllPresence();
     })();
@@ -168,17 +179,17 @@ export function PresenceProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [user, fetchAllPresence]);
+  }, [userId, fetchAllPresence]);
 
   // --- Heartbeat (every 60s): keep my presence fresh + over-limit self-alert.
   //     No auto-AFK — status only changes when the user (or the time clock)
   //     sets it explicitly. ---
   useEffect(() => {
-    if (!enabled || !user) return undefined;
-    const interval = setInterval(async () => {
+    if (!enabled || !userId) return undefined;
+    const beat = async () => {
       // Keep last_active_at current so an open tab never looks stale, whatever
       // status the user has manually chosen.
-      await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', user.id);
+      await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', userId);
 
       // Poll everyone's presence once a minute — refreshes last_active_at for
       // stale/offline detection and reconciles any missed broadcast. One small
@@ -194,23 +205,34 @@ export function PresenceProvider({ children }) {
         if (notifiedOverrunRef.current !== myUpdatedAtRef.current) {
           notifiedOverrunRef.current = myUpdatedAtRef.current;
           await supabase.from('notifications').insert({
-            user_id: user.id,
+            user_id: userId,
             title: 'Status time exceeded',
             body: `You've been "${st.name}" for over ${st.max_minutes} minutes.`,
             type: 'status',
           });
         }
       }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [enabled, user, fetchAllPresence]);
+    };
+    const interval = setInterval(beat, 60000);
+    // Browsers throttle or freeze background tabs, which used to leave people
+    // showing Offline for up to a minute after coming back. Beat right away when
+    // the tab becomes visible again.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') beat();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [enabled, userId, fetchAllPresence]);
 
   // --- Realtime: disposition changes arrive as lightweight BROADCASTs (instant)
   //     and are patched into state. Heartbeats are NOT broadcast (user_presence
   //     is removed from the realtime publication), so there's no N-squared
   //     fan-out and no full-table refetch on every change. ---
   useEffect(() => {
-    if (!enabled || !user) return undefined;
+    if (!enabled || !userId) return undefined;
     const channel = supabase.channel('presence-status', { config: { broadcast: { self: false } } });
     channel
       .on('broadcast', { event: 'status' }, ({ payload }) => {
@@ -226,7 +248,7 @@ export function PresenceProvider({ children }) {
       broadcastRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [enabled, user]);
+  }, [enabled, userId]);
 
   // NOTE: we deliberately do NOT write "Offline" on tab close / unmount. That
   // handler also fired on a normal refresh (beforeunload), so a user on Break
@@ -234,23 +256,42 @@ export function PresenceProvider({ children }) {
   // closed tab now simply stops heartbeating and getStatus() shows it Offline
   // after `staleMinutes`; clock-out still sets Offline explicitly.
 
-  const value = {
-    enabled,
-    statusTypes,
-    allPresence,
-    settings,
-    statusById,
-    getStatus,
-    staleMinutes,
-    setMyStatus,
-    setMyStatusByName,
-    refreshSettings,
-    reloadStatusTypes: async () => {
-      const { data } = await supabase.from('status_types').select('*').order('sort_order', { ascending: true });
-      if (data) setStatusTypes(data);
-    },
-    myPresence: user ? allPresence[user.id] || null : null,
-  };
+  const reloadStatusTypes = useCallback(async () => {
+    const { data } = await supabase.from('status_types').select('*').order('sort_order', { ascending: true });
+    if (data) setStatusTypes(data);
+  }, []);
+
+  // Memoized so consumers only re-render when something they read actually changes.
+  const myPresence = userId ? allPresence[userId] || null : null;
+  const value = useMemo(
+    () => ({
+      enabled,
+      statusTypes,
+      allPresence,
+      settings,
+      statusById,
+      getStatus,
+      staleMinutes,
+      setMyStatus,
+      setMyStatusByName,
+      refreshSettings,
+      reloadStatusTypes,
+      myPresence,
+    }),
+    [
+      enabled,
+      statusTypes,
+      allPresence,
+      settings,
+      statusById,
+      getStatus,
+      setMyStatus,
+      setMyStatusByName,
+      refreshSettings,
+      reloadStatusTypes,
+      myPresence,
+    ]
+  );
 
   return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>;
 }

@@ -107,6 +107,16 @@ export default function TimeClock() {
     setOpenSeg(todaySegs.find((s) => !s.ended_at) || null);
   }, [todaySegs]);
 
+  // Refresh the timeline whenever my disposition changes — including changes made
+  // from the header menu or another tab, which this page never saw before. The
+  // short delay lets the database trigger finish opening the new segment.
+  const myStatusId = myPresence?.status_type_id || null;
+  useEffect(() => {
+    if (!entry) return undefined;
+    const t = setTimeout(loadToday, 1000);
+    return () => clearTimeout(t);
+  }, [myStatusId, entry, loadToday]);
+
   // Keep the note field in sync with the server value.
   useEffect(() => {
     setNote(myPresence?.custom_note || '');
@@ -327,9 +337,14 @@ export default function TimeClock() {
   }
   // Total shift time since clock-in.
   const elapsed = () => hms(entry?.clock_in);
-  // Time in the CURRENT disposition (resets each time they switch). Uses the
-  // open segment's start so it survives refreshes.
-  const dispElapsed = () => hms(openSeg?.started_at || entry?.clock_in);
+  // Time in the CURRENT disposition (resets each time they switch). Prefers the
+  // open segment's start (survives refreshes) but only when it is for the status
+  // the user is in NOW; otherwise it uses when the current status began. It no
+  // longer falls back to the shift's clock-in time, which showed the total.
+  const dispElapsed = () => {
+    const segIsCurrent = openSeg && currentDisp && openSeg.kind === currentDisp.name;
+    return hms(segIsCurrent ? openSeg.started_at : myPresence?.updated_at || openSeg?.started_at || entry?.clock_in);
+  };
 
   const onBreak = entry?.status === 'on_break';
   const currentDisp = presenceEnabled && myPresence ? statusById(myPresence.status_type_id) : null;
