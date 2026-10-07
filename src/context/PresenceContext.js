@@ -86,6 +86,30 @@ export function PresenceProvider({ children }) {
     setAllPresence(map);
   }, []);
 
+  // Just MY row — all most people need. Merges into state instead of replacing it.
+  const fetchMyPresence = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from('user_presence')
+      .select('user_id, status_type_id, custom_note, last_active_at, afk_at, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !data) return;
+    setAllPresence((prev) => ({ ...prev, [userId]: data }));
+  }, [userId]);
+
+  // Other people's presence is only polled while something on screen shows it
+  // (Team Status, Directory, dot next to someone else's avatar...). Those
+  // components call watchOthers() on mount; it returns the cleanup. With ~50
+  // people online, polling the whole table for everyone cost ~50 x 95 rows/minute
+  // even for people looking at pages that never show it.
+  const [watchers, setWatchers] = useState(0);
+  const watchOthers = useCallback(() => {
+    setWatchers((n) => n + 1);
+    return () => setWatchers((n) => Math.max(0, n - 1));
+  }, []);
+  const watching = watchers > 0;
+
   const setMyStatus = useCallback(
     async (statusTypeId, note) => {
       if (!userId || !statusTypeId) return;
@@ -173,13 +197,30 @@ export function PresenceProvider({ children }) {
         // Keep their current status; just mark them freshly active (not stale).
         await supabase.from('user_presence').update({ last_active_at: nowIso }).eq('user_id', userId);
       }
-      fetchAllPresence();
+      fetchMyPresence();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [userId, fetchAllPresence]);
+  }, [userId, fetchMyPresence]);
+
+  // --- Poll everyone's presence, but only while someone is watching, and only
+  //     while the tab is visible. Refreshes last_active_at for stale/offline
+  //     detection and reconciles any missed broadcast. ---
+  useEffect(() => {
+    if (!enabled || !userId || !watching) return undefined;
+    const poll = () => {
+      if (document.visibilityState === 'visible') fetchAllPresence();
+    };
+    poll();
+    const interval = setInterval(poll, 60000);
+    document.addEventListener('visibilitychange', poll);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', poll);
+    };
+  }, [enabled, userId, watching, fetchAllPresence]);
 
   // --- Heartbeat (every 60s): keep my presence fresh + over-limit self-alert.
   //     No auto-AFK — status only changes when the user (or the time clock)
@@ -191,10 +232,9 @@ export function PresenceProvider({ children }) {
       // status the user has manually chosen.
       await supabase.from('user_presence').update({ last_active_at: new Date().toISOString() }).eq('user_id', userId);
 
-      // Poll everyone's presence once a minute — refreshes last_active_at for
-      // stale/offline detection and reconciles any missed broadcast. One small
-      // query per client (not the old N-squared full-table refetch storm).
-      fetchAllPresence();
+      // Re-read just my own row (catches a change made on another device).
+      // Everyone else's presence is polled separately, only while watched.
+      fetchMyPresence();
 
       // Disposition time-limit check — notify myself once per status instance if
       // I've stayed in a status past its max_minutes.
@@ -225,7 +265,7 @@ export function PresenceProvider({ children }) {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [enabled, userId, fetchAllPresence]);
+  }, [enabled, userId, fetchMyPresence]);
 
   // --- Realtime: disposition changes arrive as lightweight BROADCASTs (instant)
   //     and are patched into state. Heartbeats are NOT broadcast (user_presence
@@ -276,9 +316,11 @@ export function PresenceProvider({ children }) {
       setMyStatusByName,
       refreshSettings,
       reloadStatusTypes,
+      watchOthers,
       myPresence,
     }),
     [
+      watchOthers,
       enabled,
       statusTypes,
       allPresence,
@@ -312,9 +354,17 @@ export function usePresence() {
       setMyStatusByName: async () => {},
       refreshSettings: async () => {},
       reloadStatusTypes: async () => {},
+      watchOthers: () => () => {},
       myPresence: null,
     }
   );
+}
+
+// Call from any component that shows OTHER people's presence. While at least one
+// such component is mounted (and `active`), the provider keeps their presence fresh.
+export function useWatchPresence(active = true) {
+  const { watchOthers } = usePresence();
+  useEffect(() => (active ? watchOthers() : undefined), [watchOthers, active]);
 }
 
 export default PresenceContext;

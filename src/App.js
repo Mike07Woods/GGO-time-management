@@ -2,7 +2,7 @@
 // Top-level routing. Public /login, plus a protected layout (sidebar + navbar)
 // that wraps all seven authenticated pages.
 
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import ProtectedRoute from './components/ProtectedRoute';
@@ -14,33 +14,46 @@ import LoadingScreen from './components/LoadingScreen';
 import MobileGate from './components/MobileGate';
 import { PresenceProvider } from './context/PresenceContext';
 
+// Login and Dashboard are the first screens most people see, so they ship in the
+// main bundle. Every other page is split into its own chunk and downloaded the
+// first time it is opened (React.lazy), which keeps the first load small.
 import Login from './pages/Login';
-import AuthCallback from './pages/AuthCallback';
-import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
-import Directory from './pages/Directory';
-import Scheduling from './pages/Scheduling';
-import TimeClock from './pages/TimeClock';
-import Announcements from './pages/Announcements';
-import Notifications from './pages/Notifications';
+
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const Directory = lazy(() => import('./pages/Directory'));
+const Scheduling = lazy(() => import('./pages/Scheduling'));
+const TimeClock = lazy(() => import('./pages/TimeClock'));
+const Announcements = lazy(() => import('./pages/Announcements'));
+const Notifications = lazy(() => import('./pages/Notifications'));
 
 // Phase 2 pages
-import Timesheets from './pages/Timesheets';
-import Overtime from './pages/Overtime';
-import Forms from './pages/Forms';
-import Tasks from './pages/Tasks';
-import Reports from './pages/Reports';
+const Timesheets = lazy(() => import('./pages/Timesheets'));
+const Overtime = lazy(() => import('./pages/Overtime'));
+const Forms = lazy(() => import('./pages/Forms'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const Reports = lazy(() => import('./pages/Reports'));
 
 // Phase 3 pages
-import Chat from './pages/Chat';
-import KnowledgeBase from './pages/KnowledgeBase';
-import HelpDesk from './pages/HelpDesk';
-import Events from './pages/Events';
-import AuditLog from './pages/AuditLog';
-import UserManagement from './pages/UserManagement';
-import Departments from './pages/Departments';
-import TeamStatus from './pages/TeamStatus';
-import Settings from './pages/Settings';
+const Chat = lazy(() => import('./pages/Chat'));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const HelpDesk = lazy(() => import('./pages/HelpDesk'));
+const Events = lazy(() => import('./pages/Events'));
+const AuditLog = lazy(() => import('./pages/AuditLog'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const Departments = lazy(() => import('./pages/Departments'));
+const TeamStatus = lazy(() => import('./pages/TeamStatus'));
+const Settings = lazy(() => import('./pages/Settings'));
+
+// Shown while a page's chunk is downloading.
+function PageFallback() {
+  return (
+    <div style={{ padding: 24 }} className="dim">
+      Loading…
+    </div>
+  );
+}
 
 // The chrome shown around every authenticated page.
 // ProtectedRoute guards it; <Outlet /> renders the matched child route.
@@ -72,7 +85,9 @@ function ShellWithSidebar() {
         <div className="app-main">
           <Navbar onMenuClick={() => setMobileNavOpen(true)} />
           <main className="app-content">
-            <Outlet />
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>
@@ -89,6 +104,7 @@ export default function App() {
   return (
     <>
       {booting && <LoadingScreen onComplete={() => setBooting(false)} />}
+      <Suspense fallback={<PageFallback />}>
       <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
@@ -141,6 +157,7 @@ export default function App() {
       {/* Anything else -> dashboard */}
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </>
   );
 }

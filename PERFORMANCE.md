@@ -30,7 +30,8 @@ heartbeats would broadcast N² again.
 
 | File | Interval | Work | Scope |
 |---|---|---|---|
-| `context/PresenceContext.js` | 60s | write own `last_active_at`, poll all presence (columns only), overrun self-check | 1 small query/client — **not** N². Do not lower below 60s. |
+| `context/PresenceContext.js` | 60s | write own `last_active_at`, re-read **own** presence row, overrun self-check | 2 tiny queries/client. Do not lower below 60s. Also beats once when a hidden tab becomes visible. |
+| `context/PresenceContext.js` | 60s, **only while watched + tab visible** | poll everyone's presence (columns only) | Runs only while a component that shows *other* people's presence is mounted (`useWatchPresence()`: Team Status, Directory, DepartmentClockBoard, PresenceDot for someone else). Anything new that shows others' presence must call `useWatchPresence()`. |
 | `components/DepartmentClockBoard.js` | 30s | dept profiles + open `time_entries` | monitor only, while Time Clock open |
 | `pages/TeamStatus.js` | 60s | `time_entry_breaks` (today) | while page open |
 | `pages/TeamStatus.js` | 30s | re-render tick (no fetch) | display only |

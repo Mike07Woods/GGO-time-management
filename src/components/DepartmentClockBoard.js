@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Users } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useMonitorScope } from '../hooks/useMonitorScope';
-import { usePresence } from '../context/PresenceContext';
+import { usePresence, useWatchPresence } from '../context/PresenceContext';
 
 function initials(p) {
   const s = ((p.first_name?.[0] || '') + (p.last_name?.[0] || '')).toUpperCase();
@@ -24,6 +24,7 @@ function clockTime(v) {
 export default function DepartmentClockBoard() {
   const { memberIds, deptName } = useMonitorScope();
   const { getStatus } = usePresence();
+  useWatchPresence();
 
   const [members, setMembers] = useState([]);
   const [openByUser, setOpenByUser] = useState({}); // user_id -> open time_entry

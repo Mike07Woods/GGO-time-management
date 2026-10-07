@@ -11,7 +11,7 @@ import { Activity, Bell, X } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
-import { usePresence } from '../context/PresenceContext';
+import { usePresence, useWatchPresence } from '../context/PresenceContext';
 import { supabase } from '../supabaseClient';
 import { sendPush } from '../lib/pushNotifications';
 import Skeleton from '../components/Skeleton';
@@ -76,6 +76,7 @@ export default function TeamStatus() {
   const { isManager, isAdmin } = useRole();
   const toast = useToast();
   const { enabled, allPresence, getStatus, statusById, statusTypes, settings } = usePresence();
+  useWatchPresence();
 
   const canPing = isManager; // manager/admin/owner
   const adminView = isAdmin; // admins/owners may change the department filter

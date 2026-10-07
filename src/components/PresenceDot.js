@@ -5,10 +5,14 @@
 // (migration run), so it degrades gracefully.
 
 import React from 'react';
-import { usePresence } from '../context/PresenceContext';
+import { usePresence, useWatchPresence } from '../context/PresenceContext';
+import { useAuth } from '../hooks/useAuth';
 
 export default function PresenceDot({ userId, size = 11 }) {
   const { enabled, getStatus } = usePresence();
+  const { user } = useAuth();
+  // My own dot never needs the everyone-poll; a dot for someone else does.
+  useWatchPresence(!!userId && userId !== user?.id);
   if (!enabled || !userId) return null;
 
   const status = getStatus(userId); // stale-aware: old activity shows Offline

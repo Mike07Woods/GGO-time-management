@@ -3,11 +3,15 @@
 // Tracks the Supabase session + auth user, and loads the matching "profiles" row
 // (which holds the user's role). Exposes sign in / sign up / sign out / reset password.
 
-import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
 
 // The context object — consumed via the useAuth() hook.
 export const AuthContext = createContext(null);
+
+// Keep the existing profile object when nothing in it actually changed, so every
+// component reading `profile` isn't re-rendered for no reason.
+const sameProfile = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null); // raw Supabase session
@@ -17,6 +21,9 @@ export function AuthProvider({ children }) {
 
   // Guard so we don't try to update state after the provider unmounts.
   const mounted = useRef(true);
+  // ID of the user we've already loaded a profile for, so repeat events for the
+  // same person (tab refocus, token refresh) don't churn the app.
+  const loadedUserId = useRef(null);
 
   // Fetch the profile for the given auth user. If it doesn't exist yet
   // (first ever login), create it with the default 'user' role.
@@ -39,7 +46,7 @@ export function AuthProvider({ children }) {
     }
 
     if (data) {
-      if (mounted.current) setProfile(data);
+      if (mounted.current) setProfile((prev) => (sameProfile(prev, data) ? prev : data));
       return;
     }
 
@@ -77,6 +84,7 @@ export function AuthProvider({ children }) {
       if (!mounted.current) return;
       setSession(session);
       setUser(session?.user ?? null);
+      loadedUserId.current = session?.user?.id ?? null;
       loadProfile(session?.user ?? null).finally(() => {
         if (mounted.current) setLoading(false);
       });
@@ -85,10 +93,21 @@ export function AuthProvider({ children }) {
     // 2) React to future auth changes (login, logout, token refresh).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (!mounted.current) return;
+      const newId = newSession?.user?.id ?? null;
       setSession(newSession);
-      setUser(newSession?.user ?? null);
+      // Hand out the SAME user object while it's the same person. A fresh object
+      // on every event (token refresh, tab refocus) re-ran every effect in the app
+      // that depends on `user`.
+      setUser((prev) => (prev && newId && prev.id === newId ? prev : newSession?.user ?? null));
+
+      // Same person, nothing about them changed (e.g. SIGNED_IN fired by a tab
+      // refocus): the profile is already loaded, skip the refetch.
+      if (newId && newId === loadedUserId.current && event !== 'TOKEN_REFRESHED' && event !== 'USER_UPDATED') {
+        return;
+      }
+      loadedUserId.current = newId;
       // Defer the async profile fetch to avoid a known deadlock when calling
       // Supabase from inside the onAuthStateChange callback.
       setTimeout(() => {
@@ -140,18 +159,21 @@ export function AuthProvider({ children }) {
 
   const refreshProfile = useCallback(() => loadProfile(user), [loadProfile, user]);
 
-  const value = {
-    session,
-    user,
-    profile,
-    role: profile?.role ?? null,
-    loading,
-    signIn,
-    signUp,
-    signOut,
-    resetPassword,
-    refreshProfile,
-  };
+  const value = useMemo(
+    () => ({
+      session,
+      user,
+      profile,
+      role: profile?.role ?? null,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      resetPassword,
+      refreshProfile,
+    }),
+    [session, user, profile, loading, signIn, signUp, signOut, resetPassword, refreshProfile]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

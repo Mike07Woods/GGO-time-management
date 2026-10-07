@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, ChevronRight, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useRole } from '../hooks/useRole';
-import { usePresence } from '../context/PresenceContext';
+import { usePresence, useWatchPresence } from '../context/PresenceContext';
 import Skeleton from '../components/Skeleton';
 
 // Role -> badge class + display label. ('user' shows as "Employee".)
@@ -24,6 +24,7 @@ function fullName(p) {
 
 export default function Directory() {
   const { getStatus } = usePresence();
+  useWatchPresence();
   const { isMonitor, getCurrentDepartment } = useRole();
   const monitorDept = getCurrentDepartment();
 
