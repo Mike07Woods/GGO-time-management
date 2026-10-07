@@ -126,16 +126,24 @@ export default function TimeClock() {
   // every 30s while this page is open; quietly ignored if the table isn't set up.
   const [prompt, setPrompt] = useState(null);
   const loadPrompt = useCallback(async () => {
+    // Only a prompt for the entry I'm clocked into right now counts. Matching on
+    // user alone let an old unanswered prompt from a closed entry show on the next
+    // shift, where "Yes, still working" could never clear it.
+    if (!entry?.id) {
+      setPrompt(null);
+      return;
+    }
     const { data, error } = await supabase
       .from('time_prompts')
       .select('id, asked_at')
       .eq('user_id', user.id)
+      .eq('entry_id', entry.id)
       .is('answer', null)
       .order('asked_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     setPrompt(error ? null : data || null);
-  }, [user.id]);
+  }, [user.id, entry?.id]);
 
   useEffect(() => {
     loadPrompt();
