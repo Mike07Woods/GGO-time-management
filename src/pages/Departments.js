@@ -7,6 +7,7 @@ import { Building2, Pencil, Trash2, Plus, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
+import { useRole } from '../hooks/useRole';
 
 const EMPTY_FORM = { name: '', description: '', manager_id: '' };
 
@@ -17,6 +18,7 @@ function personName(p) {
 
 export default function Departments() {
   const toast = useToast();
+  const { canManageUser } = useRole();
 
   const [departments, setDepartments] = useState([]);
   const [people, setPeople] = useState([]);
@@ -61,6 +63,12 @@ export default function Departments() {
     people.forEach((p) => (map[p.id] = p));
     return map;
   }, [people]);
+
+  const deptName = useMemo(() => {
+    const map = {};
+    departments.forEach((d) => (map[d.id] = d.name));
+    return map;
+  }, [departments]);
 
   const managers = useMemo(() => people.filter((p) => p.role === 'manager'), [people]);
 
@@ -126,6 +134,25 @@ export default function Departments() {
       return;
     }
     toast.success('Manager updated');
+  }
+
+  // Move a person into (or, with deptId = null, out of) a department. RLS and the
+  // profiles trigger already stop admins touching admin/owner rows; canManageUser
+  // mirrors that so the UI never offers an action the database would reject.
+  async function setMemberDepartment(person, deptId) {
+    if (person.role === 'monitor' && !deptId) {
+      toast.error('Monitors must belong to a department. Move them to another one instead.');
+      return;
+    }
+    const prev = person.department_id;
+    setPeople((list) => list.map((p) => (p.id === person.id ? { ...p, department_id: deptId } : p)));
+    const { error } = await supabase.from('profiles').update({ department_id: deptId }).eq('id', person.id);
+    if (error) {
+      setPeople((list) => list.map((p) => (p.id === person.id ? { ...p, department_id: prev } : p)));
+      toast.error(error.message);
+      return;
+    }
+    toast.success(deptId ? 'Member added' : 'Member removed');
   }
 
   async function deleteDept(dept) {
@@ -306,12 +333,35 @@ export default function Departments() {
                 <X size={16} />
               </button>
             </div>
+            <div className="field" style={{ marginBottom: 16 }}>
+              <label>Add member</label>
+              <select
+                className="select"
+                value=""
+                onChange={(e) => {
+                  const person = peopleById[e.target.value];
+                  if (person) setMemberDepartment(person, drawerDept.id);
+                }}
+              >
+                <option value="">Select a person…</option>
+                {people
+                  .filter((p) => p.department_id !== drawerDept.id && canManageUser(p.role))
+                  .sort((a, b) => personName(a).localeCompare(personName(b)))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {personName(p)}
+                      {p.department_id ? ` (currently ${deptName[p.department_id] || 'another department'})` : ''}
+                    </option>
+                  ))}
+              </select>
+            </div>
             {(membersByDept[drawerDept.id] || []).length === 0 ? (
               <div className="empty-state">No members in this department.</div>
             ) : (
               <div className="stack">
                 {(membersByDept[drawerDept.id] || []).map((m) => (
-                  <div key={m.id} className="row" style={{ gap: 10 }}>
+                  <div key={m.id} className="row row--between" style={{ gap: 10 }}>
+                    <div className="row" style={{ gap: 10 }}>
                     <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
                       {((m.first_name?.[0] || '') + (m.last_name?.[0] || '')).toUpperCase() || '?'}
                     </div>
@@ -321,6 +371,16 @@ export default function Departments() {
                         {m.role === 'user' ? 'employee' : m.role}
                       </div>
                     </div>
+                    </div>
+                    {canManageUser(m.role) && m.role !== 'monitor' && (
+                      <button
+                        className="btn btn--ghost btn--sm"
+                        title="Remove from department"
+                        onClick={() => setMemberDepartment(m, null)}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
