@@ -46,7 +46,7 @@ function prettyDate(d) {
 export default function Timesheets() {
   const { user, profile } = useAuth();
   const { isManager } = useRole();
-  const { isMonitor, memberIds } = useMonitorScope();
+  const { isMonitor, scoped, memberIds } = useMonitorScope();
   const toast = useToast();
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
@@ -87,11 +87,12 @@ export default function Timesheets() {
   useEffect(() => {
     async function loadRefs() {
       if (isManager || isMonitor) {
+        if (scoped && !memberIds) return; // wait for the team list
         let pq = supabase
           .from('profiles')
           .select('id, first_name, last_name, email, department_id')
           .order('first_name', { ascending: true });
-        if (isMonitor && memberIds) pq = pq.in('id', memberIds);
+        if (scoped && memberIds) pq = pq.in('id', memberIds);
         const { data } = await pq;
         setPeople(data || []);
       }
@@ -105,7 +106,7 @@ export default function Timesheets() {
       if (rule?.weekly_threshold != null) setWeeklyThreshold(Number(rule.weekly_threshold));
     }
     loadRefs();
-  }, [isManager, isMonitor, memberIds]);
+  }, [isManager, isMonitor, scoped, memberIds]);
 
   // Recompute the daily breakdown + load the saved timesheet whenever the
   // selected user or week changes.
@@ -151,12 +152,13 @@ export default function Timesheets() {
 
   // Load the timesheets list (RLS scopes it to what the viewer may see).
   const loadList = useCallback(async () => {
+    if (scoped && !memberIds) return; // wait for the team list
     let q = supabase.from('timesheets').select('*').order('week_start', { ascending: false });
     if (statusFilter !== 'all') q = q.eq('status', statusFilter);
-    if (isMonitor && memberIds) q = q.in('user_id', memberIds); // department only
+    if (scoped && memberIds) q = q.in('user_id', memberIds); // own team only
     const { data } = await q;
     setList(data || []);
-  }, [statusFilter, isMonitor, memberIds]);
+  }, [statusFilter, scoped, memberIds]);
 
   useEffect(() => {
     loadList();

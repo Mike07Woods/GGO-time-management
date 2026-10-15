@@ -44,7 +44,7 @@ const EMPTY_FORM = { title: '', assigned_to: '', start_time: '', end_time: '', l
 export default function Scheduling() {
   const { user, profile } = useAuth();
   const { canCreate, canEdit, isManager, isAdmin } = useRole();
-  const { isMonitor, memberIds } = useMonitorScope();
+  const { isMonitor, scoped: teamScoped, memberIds } = useMonitorScope();
   const toast = useToast();
 
   const canCreateShift = canCreate('shift'); // manager and above
@@ -74,15 +74,16 @@ export default function Scheduling() {
 
   const assignablePeople = useMemo(() => {
     if (isAdmin) return people;
-    if (isManager) return people.filter((p) => p.department && p.department === profile?.department);
+    if (isManager) return people.filter((p) => memberIds?.includes(p.id));
     return [];
-  }, [people, isAdmin, isManager, profile]);
+  }, [people, isAdmin, isManager, memberIds]);
 
   async function loadData() {
+    if (teamScoped && !memberIds) return; // wait for the team list rather than flashing everyone's shifts
     setLoading(true);
     let shiftQuery = supabase.from('shifts').select('*').order('start_time', { ascending: true });
-    if (isMonitor && memberIds) {
-      shiftQuery = shiftQuery.in('assigned_to', memberIds); // department shifts (read-only)
+    if (teamScoped && memberIds) {
+      shiftQuery = shiftQuery.in('assigned_to', memberIds); // team shifts (monitors read-only)
     } else if (!isManager) {
       shiftQuery = shiftQuery.eq('assigned_to', user.id);
     }
@@ -105,7 +106,7 @@ export default function Scheduling() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isManager, isMonitor, memberIds]);
+  }, [user, isManager, isMonitor, teamScoped, memberIds]);
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));

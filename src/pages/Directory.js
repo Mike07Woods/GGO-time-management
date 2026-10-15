@@ -6,7 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, ChevronRight, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { useRole } from '../hooks/useRole';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { usePresence, useWatchPresence } from '../context/PresenceContext';
 import Skeleton from '../components/Skeleton';
 
@@ -25,8 +25,7 @@ function fullName(p) {
 export default function Directory() {
   const { getStatus } = usePresence();
   useWatchPresence();
-  const { isMonitor, getCurrentDepartment } = useRole();
-  const monitorDept = getCurrentDepartment();
+  const { scoped, deptIds, deptName: scopeDeptName } = useMonitorScope();
 
   const [people, setPeople] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -38,9 +37,10 @@ export default function Directory() {
 
   const loadPeople = useCallback(async () => {
     setLoading(true);
-    // Monitors only ever load their own department's people.
+    if (scoped && !deptIds) return; // wait for the team's departments
+    // Monitors and managers only ever load their own team's people.
     let pq = supabase.from('profiles').select('*').order('first_name', { ascending: true });
-    if (isMonitor && monitorDept) pq = pq.eq('department_id', monitorDept);
+    if (scoped) pq = pq.in('department_id', deptIds);
     const [peopleRes, deptRes] = await Promise.all([
       pq,
       supabase.from('departments').select('id, name').order('name', { ascending: true }),
@@ -49,7 +49,7 @@ export default function Directory() {
     setPeople(peopleRes.data || []);
     setDepartments(deptRes.error ? [] : deptRes.data || []);
     setLoading(false);
-  }, [isMonitor, monitorDept]);
+  }, [scoped, deptIds]);
 
   const deptName = useMemo(() => {
     const map = {};
@@ -60,11 +60,6 @@ export default function Directory() {
   useEffect(() => {
     loadPeople();
   }, [loadPeople]);
-
-  // Monitors are locked to their own department filter.
-  useEffect(() => {
-    if (isMonitor && monitorDept) setDeptFilter(monitorDept);
-  }, [isMonitor, monitorDept]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -104,9 +99,9 @@ export default function Directory() {
           {!loading && <span className="badge badge--gray" style={{ marginLeft: 6 }}>{people.length}</span>}
         </h1>
         <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-          {isMonitor ? (
+          {scoped ? (
             <span className="badge badge--teal" style={{ alignSelf: 'center' }}>
-              Viewing: {deptName[monitorDept] || 'your department'}
+              Viewing: {scopeDeptName || 'your team'}
             </span>
           ) : (
             departments.length > 0 && (
