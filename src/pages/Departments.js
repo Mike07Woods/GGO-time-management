@@ -1,6 +1,7 @@
 // src/pages/Departments.js
-// Owner/Admin: create and manage departments, assign a manager, view members.
-// Backed by the `departments` table (see supabase-departments.sql).
+// Owner/Admin: create and manage departments, assign one or more managers, view
+// members. Backed by `departments` (supabase-departments.sql) and the
+// `department_managers` join table (supabase-department-managers.sql).
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Pencil, Trash2, Plus, X } from 'lucide-react';
@@ -9,7 +10,7 @@ import { supabase } from '../supabaseClient';
 import { SkeletonList } from '../components/Skeleton';
 import { useRole } from '../hooks/useRole';
 
-const EMPTY_FORM = { name: '', description: '', manager_id: '' };
+const EMPTY_FORM = { name: '', description: '' };
 
 function personName(p) {
   if (!p) return '—';
@@ -24,6 +25,8 @@ export default function Departments() {
   const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
   const [migrationMissing, setMigrationMissing] = useState(false);
+  const [managersMissing, setManagersMissing] = useState(false);
+  const [deptManagers, setDeptManagers] = useState([]); // [{department_id, user_id}]
 
   // Modal (add / edit) + drawer (members)
   const [modalOpen, setModalOpen] = useState(false);
@@ -34,13 +37,16 @@ export default function Departments() {
 
   async function loadData() {
     setLoading(true);
-    const [deptRes, peopleRes] = await Promise.all([
+    const [deptRes, peopleRes, mgrRes] = await Promise.all([
       supabase.from('departments').select('*').order('name', { ascending: true }),
       supabase
         .from('profiles')
         .select('id, first_name, last_name, email, role, department_id')
         .eq('is_active', true),
+      supabase.from('department_managers').select('department_id, user_id'),
     ]);
+    setManagersMissing(!!mgrRes.error);
+    setDeptManagers(mgrRes.error ? [] : mgrRes.data || []);
     if (deptRes.error) {
       // Most likely the migration hasn't been run yet.
       setMigrationMissing(true);
@@ -72,6 +78,12 @@ export default function Departments() {
 
   const managers = useMemo(() => people.filter((p) => p.role === 'manager'), [people]);
 
+  const managersByDept = useMemo(() => {
+    const map = {};
+    deptManagers.forEach((m) => (map[m.department_id] = map[m.department_id] || []).push(m.user_id));
+    return map;
+  }, [deptManagers]);
+
   const membersByDept = useMemo(() => {
     const map = {};
     people.forEach((p) => {
@@ -89,7 +101,7 @@ export default function Departments() {
 
   function openEdit(dept) {
     setEditingId(dept.id);
-    setForm({ name: dept.name || '', description: dept.description || '', manager_id: dept.manager_id || '' });
+    setForm({ name: dept.name || '', description: dept.description || '' });
     setModalOpen(true);
   }
 
@@ -103,7 +115,6 @@ export default function Departments() {
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || null,
-      manager_id: form.manager_id || null,
     };
     const resp = editingId
       ? await supabase.from('departments').update(payload).eq('id', editingId).select().single()
@@ -121,19 +132,32 @@ export default function Departments() {
     toast.success(editingId ? 'Department updated' : 'Department created');
   }
 
-  async function assignManager(dept, managerId) {
-    const prev = dept.manager_id;
-    setDepartments((list) => list.map((d) => (d.id === dept.id ? { ...d, manager_id: managerId || null } : d)));
-    const { error } = await supabase
-      .from('departments')
-      .update({ manager_id: managerId || null })
-      .eq('id', dept.id);
+  async function addManager(dept, userId) {
+    if (!userId) return;
+    const row = { department_id: dept.id, user_id: userId };
+    setDeptManagers((list) => [...list, row]);
+    const { error } = await supabase.from('department_managers').insert(row);
     if (error) {
-      setDepartments((list) => list.map((d) => (d.id === dept.id ? { ...d, manager_id: prev } : d)));
+      setDeptManagers((list) => list.filter((m) => !(m.department_id === dept.id && m.user_id === userId)));
       toast.error(error.message);
       return;
     }
-    toast.success('Manager updated');
+    toast.success('Manager added');
+  }
+
+  async function removeManager(dept, userId) {
+    setDeptManagers((list) => list.filter((m) => !(m.department_id === dept.id && m.user_id === userId)));
+    const { error } = await supabase
+      .from('department_managers')
+      .delete()
+      .eq('department_id', dept.id)
+      .eq('user_id', userId);
+    if (error) {
+      setDeptManagers((list) => [...list, { department_id: dept.id, user_id: userId }]);
+      toast.error(error.message);
+      return;
+    }
+    toast.success('Manager removed');
   }
 
   // Move a person into (or, with deptId = null, out of) a department. RLS and the
@@ -190,6 +214,13 @@ export default function Departments() {
         </div>
       )}
 
+      {managersMissing && !migrationMissing && (
+        <div className="alert alert--error">
+          Multiple managers need a one-time setup. Run <strong>supabase-department-managers.sql</strong> in
+          the Supabase SQL Editor, then reload.
+        </div>
+      )}
+
       {loading ? (
         <div className="card">
           <SkeletonList />
@@ -227,22 +258,37 @@ export default function Departments() {
                 </div>
 
                 <div className="field" style={{ margin: '14px 0 10px' }}>
-                  <label>Manager</label>
+                  <label>Managers</label>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                    {(managersByDept[dept.id] || []).length === 0 && <span className="dim">Unassigned</span>}
+                    {(managersByDept[dept.id] || []).map((uid) => (
+                      <span key={uid} className="badge badge--teal" style={{ display: 'inline-flex', gap: 4 }}>
+                        {personName(peopleById[uid])}
+                        <button
+                          type="button"
+                          title="Remove manager"
+                          onClick={() => removeManager(dept, uid)}
+                          style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit' }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                   <select
                     className="select"
-                    value={dept.manager_id || ''}
-                    onChange={(e) => assignManager(dept, e.target.value)}
+                    value=""
+                    disabled={managersMissing}
+                    onChange={(e) => addManager(dept, e.target.value)}
                   >
-                    <option value="">Unassigned</option>
-                    {managers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {personName(m)}
-                      </option>
-                    ))}
-                    {/* keep a current non-manager assignee visible */}
-                    {dept.manager_id && !managers.some((m) => m.id === dept.manager_id) && (
-                      <option value={dept.manager_id}>{personName(peopleById[dept.manager_id])}</option>
-                    )}
+                    <option value="">Add a manager…</option>
+                    {managers
+                      .filter((m) => !(managersByDept[dept.id] || []).includes(m.id))
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {personName(m)}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -289,21 +335,6 @@ export default function Departments() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="Optional"
                 />
-              </div>
-              <div className="field">
-                <label>Manager</label>
-                <select
-                  className="select"
-                  value={form.manager_id}
-                  onChange={(e) => setForm({ ...form, manager_id: e.target.value })}
-                >
-                  <option value="">Unassigned</option>
-                  {managers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {personName(m)}
-                    </option>
-                  ))}
-                </select>
               </div>
               <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="btn btn--ghost" onClick={() => setModalOpen(false)}>
