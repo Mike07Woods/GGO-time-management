@@ -42,7 +42,7 @@ function initials(name) {
 const EMPTY_FORM = { title: '', assigned_to: '', start_time: '', end_time: '', location: '' };
 
 export default function Scheduling() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const { canCreate, canEdit, isManager, isAdmin } = useRole();
   const { isMonitor, scoped: teamScoped, memberIds } = useMonitorScope();
   const toast = useToast();
