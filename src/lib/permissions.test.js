@@ -154,13 +154,19 @@ describe('canAccessPage', () => {
     }
   });
 
-  test('audit log + user management are owner-only', () => {
-    for (const key of ['audit', 'users']) {
-      expect(canAccessPage('user', key)).toBe(false);
-      expect(canAccessPage('manager', key)).toBe(false);
-      expect(canAccessPage('admin', key)).toBe(false);
-      expect(canAccessPage('owner', key)).toBe(true);
-    }
+  test('audit log is owner-only', () => {
+    expect(canAccessPage('user', 'audit')).toBe(false);
+    expect(canAccessPage('manager', 'audit')).toBe(false);
+    expect(canAccessPage('admin', 'audit')).toBe(false);
+    expect(canAccessPage('owner', 'audit')).toBe(true);
+  });
+
+  test('user management is admin/owner only', () => {
+    expect(canAccessPage('user', 'users')).toBe(false);
+    expect(canAccessPage('manager', 'users')).toBe(false);
+    expect(canAccessPage('monitor', 'users')).toBe(false);
+    expect(canAccessPage('admin', 'users')).toBe(true);
+    expect(canAccessPage('owner', 'users')).toBe(true);
   });
 
   test('unknown page keys default to accessible', () => {

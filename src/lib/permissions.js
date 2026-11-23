@@ -151,7 +151,7 @@ export const PAGE_ACCESS = {
   helpdesk: ['admin', 'owner'],
   events: ['admin', 'owner'],
   departments: ['admin', 'owner'],
-  users: ['owner'],
+  users: ['admin', 'owner'], // admins act only on non-admin/owner accounts (see canManageUser)
   audit: ['owner'],
 };
 

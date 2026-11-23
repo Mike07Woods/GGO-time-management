@@ -1,11 +1,13 @@
 // src/pages/UserManagement.js
-// Owner-only user management: change roles + department assignments from inline
+// Owner/admin user management: change roles + department assignments from inline
 // dropdowns and soft-remove users — no need to touch Supabase directly.
-// The /users route is owner-gated in App.js; the DB enforces the same via RLS +
-// the enforce_profile_update trigger.
+// Owners can act on anyone but themselves; admins only on employees, monitors and
+// managers (canManageUser). The DB enforces the same via RLS + the
+// enforce_profile_update trigger.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useRole } from '../hooks/useRole';
 import { useToast } from '../context/ToastContext';
 import { UserCog } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -40,6 +42,7 @@ function fullName(p) {
 
 export default function UserManagement() {
   const { user } = useAuth();
+  const { canManageUser, assignableRoles } = useRole();
   const toast = useToast();
 
   const [people, setPeople] = useState([]);
@@ -169,7 +172,11 @@ export default function UserManagement() {
                 {filtered.map((p) => {
                   const isSelf = p.id === user.id;
                   const isOwner = p.role === 'owner';
-                  const roleLocked = isSelf || isOwner; // can't change self or another owner
+                  // Never yourself; and only accounts your own role may manage
+                  // (admins can't touch admins/owners).
+                  const locked = isSelf || !canManageUser(p.role);
+                  const roleLocked = locked;
+                  const allowedRoles = assignableRoles();
                   const busy = savingId === p.id;
                   return (
                     <tr key={p.id}>
@@ -193,13 +200,13 @@ export default function UserManagement() {
                           title={
                             isSelf
                               ? "You can't change your own role"
-                              : isOwner
-                              ? "Another owner's role can't be changed here"
+                              : locked
+                              ? "You can't change this account's role"
                               : 'Change role'
                           }
                           onChange={(e) => changeRole(p, e.target.value)}
                         >
-                          {ROLE_OPTIONS.map((o) => (
+                          {ROLE_OPTIONS.filter((o) => o.value === p.role || allowedRoles.includes(o.value)).map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.label}
                             </option>
@@ -222,7 +229,7 @@ export default function UserManagement() {
                                 className="select"
                                 style={{ maxWidth: 160, borderColor: needsDept ? 'var(--red)' : undefined }}
                                 value={p.department_id || ''}
-                                disabled={busy}
+                                disabled={busy || (locked && !isSelf)}
                                 onChange={(e) => changeDepartment(p, e.target.value)}
                               >
                                 <option value="">{p.role === 'monitor' ? '— required —' : '—'}</option>
@@ -251,7 +258,7 @@ export default function UserManagement() {
                         ) : (
                           <button
                             className={'btn btn--sm ' + (p.mobile_access ? 'btn--primary' : 'btn--ghost')}
-                            disabled={busy}
+                            disabled={busy || (locked && !isSelf)}
                             title={p.mobile_access ? 'Phone access ON — click to disable' : 'Phone access OFF — click to enable'}
                             onClick={() => toggleMobile(p)}
                           >
@@ -262,8 +269,14 @@ export default function UserManagement() {
                       <td>
                         <button
                           className="btn btn--danger btn--sm"
-                          disabled={isSelf || isOwner || busy}
-                          title={isSelf || isOwner ? 'Owners cannot be removed here' : 'Soft-delete this user'}
+                          disabled={locked || busy}
+                          title={
+                            isSelf
+                              ? "You can't remove yourself"
+                              : locked
+                              ? "You can't remove this account"
+                              : 'Soft-delete this user'
+                          }
                           onClick={() => removeUser(p)}
                         >
                           Remove
