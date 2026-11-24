@@ -57,8 +57,8 @@ function downloadCsv(filename, rows) {
 }
 
 export default function Reports() {
-  // Monitors see only their own department's data.
-  const { isMonitor, memberIds, deptName, ready: scopeReady } = useMonitorScope();
+  // Monitors and managers see only their own team's data.
+  const { scoped, memberIds, deptName, ready: scopeReady } = useMonitorScope();
 
   // Default range: the last 7 days.
   const today = useMemo(() => new Date(), []);
@@ -98,8 +98,8 @@ export default function Reports() {
     const endIso = endExclusive.toISOString();
 
     // Wait until we know the monitor's department members before querying.
-    if (isMonitor && !scopeReady) return;
-    const ids = isMonitor ? memberIds || [] : null;
+    if (scoped && !scopeReady) return;
+    const ids = scoped ? memberIds || [] : null;
 
     let peopleQ = supabase.from('profiles').select('id, first_name, last_name, email').eq('is_active', true);
     let entriesQ = supabase.from('time_entries').select('user_id, total_hours, status').gte('clock_in', startIso).lt('clock_in', endIso);
@@ -157,7 +157,7 @@ export default function Reports() {
     if (ruleRes.data?.weekly_threshold != null) setThreshold(Number(ruleRes.data.weekly_threshold));
 
     setLoading(false);
-  }, [start, end, isMonitor, memberIds, scopeReady]);
+  }, [start, end, scoped, memberIds, scopeReady]);
 
   useEffect(() => {
     load();
@@ -167,8 +167,8 @@ export default function Reports() {
   useEffect(() => {
     let active = true;
     (async () => {
-      if (isMonitor && !scopeReady) return;
-      const ids = isMonitor ? memberIds || [] : null;
+      if (scoped && !scopeReady) return;
+      const ids = scoped ? memberIds || [] : null;
       setAttLoading(true);
       const dayStart = new Date(`${attDate}T00:00:00`);
       const dayEnd = new Date(dayStart);
@@ -261,7 +261,7 @@ export default function Reports() {
     return () => {
       active = false;
     };
-  }, [attDate, isMonitor, memberIds, scopeReady]);
+  }, [attDate, scoped, memberIds, scopeReady]);
 
   // Disposition columns present in the day's data (ordered).
   const attKinds = useMemo(() => {
@@ -303,8 +303,8 @@ export default function Reports() {
   useEffect(() => {
     let active = true;
     (async () => {
-      if (isMonitor && !scopeReady) return;
-      const ids = isMonitor ? memberIds || [] : null;
+      if (scoped && !scopeReady) return;
+      const ids = scoped ? memberIds || [] : null;
       setLogLoading(true);
       const startIso = new Date(`${start}T00:00:00`).toISOString();
       const endEx = new Date(`${end}T00:00:00`);
@@ -344,7 +344,7 @@ export default function Reports() {
     return () => {
       active = false;
     };
-  }, [start, end, isMonitor, memberIds, scopeReady]);
+  }, [start, end, scoped, memberIds, scopeReady]);
 
   function exportLog() {
     const header = ['Employee', 'Date', 'Clock in', 'Clock out', 'Hours', 'Status'];
@@ -382,7 +382,7 @@ export default function Reports() {
         <div>
           <h1>
             <BarChart2 size={20} />{' '}
-            {isMonitor ? `Department Report: ${deptName || 'your department'}` : 'Reports & Analytics'}
+            {scoped ? `Department Report: ${deptName || 'your department'}` : 'Reports & Analytics'}
           </h1>
           <p>Team summaries for the selected date range.</p>
         </div>

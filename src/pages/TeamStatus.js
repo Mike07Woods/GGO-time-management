@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Bell, X } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useRole } from '../hooks/useRole';
+import { useMonitorScope } from '../hooks/useMonitorScope';
 import { useToast } from '../context/ToastContext';
 import { usePresence, useWatchPresence } from '../context/PresenceContext';
 import { supabase } from '../supabaseClient';
@@ -74,6 +75,7 @@ function initials(p) {
 export default function TeamStatus() {
   const { user, profile } = useAuth();
   const { isManager, isAdmin } = useRole();
+  const { deptIds, deptName: teamNames } = useMonitorScope();
   const toast = useToast();
   const { enabled, allPresence, getStatus, statusById, statusTypes, settings } = usePresence();
   useWatchPresence();
@@ -89,7 +91,7 @@ export default function TeamStatus() {
   const [timeline, setTimeline] = useState({}); // user_id -> today's disposition segments
   const [expandedId, setExpandedId] = useState(null); // card whose timeline is open
   const [statusFilter, setStatusFilter] = useState('all');
-  // Managers are locked to their own department; admins/owners default to "all".
+  // Admins/owners default to "all"; managers are scoped via useMonitorScope.
   const [deptFilter, setDeptFilter] = useState('all');
 
   // Ping popover state.
@@ -154,11 +156,6 @@ export default function TeamStatus() {
     load();
   }, [load]);
 
-  // Managers default to (and are locked to) their own department.
-  useEffect(() => {
-    if (!adminView && profile?.department_id) setDeptFilter(profile.department_id);
-  }, [adminView, profile]);
-
   const deptName = useMemo(() => {
     const map = {};
     departments.forEach((d) => (map[d.id] = d.name));
@@ -199,14 +196,16 @@ export default function TeamStatus() {
   // Resolve the live (stale-aware) status object for a person.
   const statusOf = useCallback((p) => getStatus(p.id), [getStatus]);
 
-  // Department-scoped list (respects manager lock + admin filter).
+  // Team-scoped list: managers see only their own department(s) (own + ones they
+  // lead); a manager with no team sees nobody. Admins/owners use the filter.
   const deptScoped = useMemo(() => {
     return people.filter((p) => {
+      if (!adminView) return !!deptIds && deptIds.includes(p.department_id);
       if (deptFilter === 'all') return true;
       if (deptFilter === 'unassigned') return !p.department_id;
       return p.department_id === deptFilter;
     });
-  }, [people, deptFilter]);
+  }, [people, deptFilter, adminView, deptIds]);
 
   // Summary counts (over the department-scoped list, before the status filter).
   const summary = useMemo(() => {
@@ -403,7 +402,7 @@ export default function TeamStatus() {
             )
           ) : (
             <span className="badge badge--teal">
-              {deptName[deptFilter] || 'My department'}
+              {teamNames || 'No team assigned'}
             </span>
           )}
 

@@ -2,9 +2,8 @@
 // Helper for team-scoping pages. Two kinds of user are restricted to "their
 // team" and get `scoped = true`:
 //   - monitors  -> their own department (read-only)
-//   - managers  -> the departments they are assigned to manage
-//                  (department_managers); their own profile department only
-//                  if they manage none
+//   - managers  -> only the departments they are assigned to manage
+//                  (department_managers); none assigned = no team
 // Returns the team's member ids + department ids/name so pages can filter their
 // queries (e.g. .in('user_id', memberIds)). For everyone else (employees, admins,
 // owners) scoped=false and memberIds=null, so callers simply skip filtering.
@@ -39,17 +38,20 @@ export function useMonitorScope() {
     let active = true;
     setReady(false);
     (async () => {
-      // A manager's team is the department(s) they are assigned to manage. Only a
-      // manager with no assignment falls back to the department on their profile,
-      // so moving someone's management to another department really moves it.
-      let list = ownDept ? [ownDept] : [];
+      // A manager's team is ONLY the department(s) they are assigned to manage.
+      // Their own profile department does not count: everyone defaults into one
+      // department (e.g. Operations), so using it would let managers see each
+      // other. A manager with no assignment has no team. Monitors use their own
+      // department.
+      let list = [];
       if (isTeamLead) {
         const { data } = await supabase
           .from('department_managers')
           .select('department_id')
           .eq('user_id', userId);
-        const managed = (data || []).map((d) => d.department_id);
-        if (managed.length) list = managed;
+        list = (data || []).map((d) => d.department_id);
+      } else if (ownDept) {
+        list = [ownDept];
       }
 
       let members = [];
